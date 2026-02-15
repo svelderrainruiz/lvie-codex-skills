@@ -92,6 +92,7 @@ Describe 'Release workflow contract' {
     It 'publishes release assets from CI artifacts plus installer' {
         $script:releaseContent | Should -Match 'publish-release-assets:'
         $script:releaseContent | Should -Match 'needs:\s*\[resolve-release-context,\s*ci-gate,\s*package\]'
+        $script:releaseContent | Should -Match 'publish-release-assets:\s*[\s\S]*?- name:\s*Checkout\s*[\s\S]*?uses:\s*actions/checkout@v4'
         $script:releaseContent | Should -Match 'Download installer artifact'
         $script:releaseContent | Should -Match 'pattern:\s*docker-contract-ppl-bundle-windows-x64-\*'
         $script:releaseContent | Should -Match 'pattern:\s*docker-contract-ppl-bundle-linux-x64-\*'

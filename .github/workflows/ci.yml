@@ -1224,7 +1224,8 @@ jobs:
             fi
           fi
 
-      - name: Build Linux x86 PPL via runner-cli parity (shadow)
+      - id: run-linux-x86-shadow
+        name: Build Linux x86 PPL via runner-cli parity (shadow)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -1438,9 +1439,11 @@ jobs:
           }
           Set-Content -LiteralPath $metricsPath -Value $metricsJson -Encoding UTF8
 
+          "lane_status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($null -ne $capturedError) {
-            throw $capturedError
+            Write-Warning "Linux x86 shadow lane failed but remains non-gating: $reason"
           }
+          $global:LASTEXITCODE = 0
 
       - name: Publish Linux x86 shadow summary
         if: always()
@@ -1495,7 +1498,7 @@ jobs:
           ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Upload Linux raw x86 PPL artifact
-        if: success()
+        if: ${{ always() && steps.run-linux-x86-shadow.outputs.lane_status == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: docker-contract-ppl-container-linux-x86-shadow-raw-${{ github.run_id }}
@@ -1503,7 +1506,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Linux x86 PPL bundle artifact
-        if: success()
+        if: ${{ always() && steps.run-linux-x86-shadow.outputs.lane_status == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: docker-contract-ppl-container-linux-x86-shadow-${{ github.run_id }}

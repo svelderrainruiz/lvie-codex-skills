@@ -55,6 +55,13 @@ Describe 'Release metrics scaffold contract' {
         $script:greenSchema.required | Should -Contain 'head_sha'
         $script:greenSchema.required | Should -Contain 'required_lanes_passed'
         $script:greenSchema.required | Should -Contain 'artifact_contract_hashes'
+        $script:greenSchema.properties.PSObject.Properties.Name | Should -Contain 'lane_name'
+        $script:greenSchema.properties.PSObject.Properties.Name | Should -Contain 'lane_role'
+        $script:greenSchema.properties.PSObject.Properties.Name | Should -Contain 'ppl_target_os'
+        $script:greenSchema.properties.PSObject.Properties.Name | Should -Contain 'ppl_bitness'
+        $script:greenSchema.properties.PSObject.Properties.Name | Should -Contain 'container_image'
+        $script:greenSchema.properties.PSObject.Properties.Name | Should -Contain 'duration_seconds'
+        $script:greenSchema.properties.PSObject.Properties.Name | Should -Contain 'status'
     }
 
     It 'includes review and improvement sections in the runbook' {

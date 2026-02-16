@@ -12,9 +12,11 @@ Provide a fast map of deterministic CI/release jobs and artifacts for GO/NO-GO a
 | `docker-ci` | contract suite and deterministic Docker test baseline | required |
 | `resolve-source-target` | resolves source repo/ref/sha via input -> vars -> fallback and enforces strict SHA pin | required |
 | `run-lunit-smoke-x64` | required native smoke gate (effective target year resolver-driven) | required |
-| `build-x64-ppl-windows` | Windows x64 PPL artifact lane | required |
-| `build-x64-ppl-linux` | Linux x64 PPL artifact lane | required |
-| `build-x86-ppl-linux-shadow` | Linux x86 container PPL shadow lane with schema-validated metrics | advisory (non-gating) |
+| `build-ppl-container-windows-x64` | Windows container x64 PPL lane (`windows-2025`) | required |
+| `build-ppl-container-windows-x86-shadow` | Windows container x86 PPL shadow lane (`windows-2025`) | advisory (non-gating) |
+| `build-ppl-container-linux-x64` | Linux container x64 PPL lane (`ubuntu-24.04`) | required |
+| `build-ppl-container-linux-x86-shadow` | Linux container x86 PPL shadow lane (`ubuntu-24.04`) | advisory (non-gating) |
+| `build-ppl-selfhosted-windows` | serialized self-hosted matrix lane (`x86` required + `x64 shadow`) | mixed |
 | `prepare-vipb-linux` | authoritative VIPB diagnostics/prep lane | required |
 | `build-vip-self-hosted` | self-hosted package build lane | required |
 | `install-vip-x86-self-hosted` | post-package VIPM install/uninstall smoke lane | required |
@@ -23,14 +25,15 @@ Provide a fast map of deterministic CI/release jobs and artifacts for GO/NO-GO a
 | `build-runner-cli-linux-docker` | deterministic runner-cli linux-x64 container lane | advisory (non-gating) |
 
 ## Required CI artifacts for release GO/NO-GO
-- `docker-contract-ppl-bundle-windows-x64-<run_id>`
-- `docker-contract-ppl-bundle-linux-x64-<run_id>`
+- `docker-contract-ppl-container-windows-x64-<run_id>`
+- `docker-contract-ppl-container-linux-x64-<run_id>`
+- `docker-contract-ppl-selfhosted-windows-x86-<run_id>`
 - `docker-contract-vip-package-self-hosted-<run_id>`
 
 ## Advisory CI artifacts (non-gating)
-- `docker-contract-ppl-linux-raw-x86-<run_id>`
-- `docker-contract-ppl-bundle-linux-x86-<run_id>`
-- `docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id>`
+- `docker-contract-ppl-container-windows-x86-shadow-<run_id>`
+- `docker-contract-ppl-container-linux-x86-shadow-<run_id>`
+- `docker-contract-ppl-selfhosted-windows-x64-shadow-<run_id>`
 
 ## Release workflow map
 | Job | Role |
@@ -43,9 +46,12 @@ Provide a fast map of deterministic CI/release jobs and artifacts for GO/NO-GO a
 
 ## Release payload files
 - `lvie-codex-skill-layer-installer.exe`
-- `lvie-ppl-bundle-windows-x64.zip`
-- `lvie-ppl-bundle-linux-x64.zip`
-- `lvie-ppl-bundle-linux-x86.zip`
+- `lvie-ppl-container-windows-x64.zip`
+- `lvie-ppl-container-windows-x86-shadow.zip`
+- `lvie-ppl-container-linux-x64.zip`
+- `lvie-ppl-container-linux-x86-shadow.zip`
+- `lvie-ppl-selfhosted-windows-x86.zip`
+- `lvie-ppl-selfhosted-windows-x64-shadow.zip`
 - `lvie-vip-package-self-hosted.zip`
 - `release-provenance.json`
 - `release-payload-manifest.json`

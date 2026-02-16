@@ -115,10 +115,10 @@ Describe 'Agent docs contract' {
         $releaseGates | Should -Match 'docker-contract-pylavi-source-project-<run_id>'
         $quickstart | Should -Match 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force'
         $quickstart | Should -Match 'Get-ExecutionPolicy -List'
-        $quickstart | Should -Match 'Do not use `-ExecutionPolicy Bypass`'
+        $quickstart | Should -Match 'Do not pass execution-policy override flags'
         $releaseGates | Should -Match 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force'
         $releaseGates | Should -Match 'Get-ExecutionPolicy -List'
-        $releaseGates | Should -Match '-ExecutionPolicy Bypass'
+        $releaseGates | Should -Match 'execution-policy override flags are not allowed'
     }
 
     It 'documents deterministic post-merge auto-release behavior and version-gated skip semantics' {
@@ -139,7 +139,7 @@ Describe 'Agent docs contract' {
         $quickstart | Should -Match 'Initialize-ForkPortability\.ps1'
         $quickstart | Should -Match 'lvie-ppl-bundle-linux-x86\.zip'
         $quickstart | Should -Match 'LVIE_SOURCE_PROJECT_SHA'
-        $quickstart | Should -Match '<owner>/labview-icon-editor-codex-skills'
+        $quickstart | Should -Match '<owner>/lvie-codex-skills'
 
         $releaseGates | Should -Match 'workflow inputs \(manual dispatch\)'
         $releaseGates | Should -Match 'LVIE_SOURCE_PROJECT_REPO'
@@ -161,4 +161,5 @@ Describe 'Agent docs contract' {
         $ciCatalog | Should -Not -Match 'conformance-full'
     }
 }
+
 

@@ -179,12 +179,15 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'Upload Linux x64 PPL bundle artifact'
     }
 
-    It 'defines linux x86 shadow PPL lane with schema-validated metrics and diagnostics artifacts' {
+    It 'defines linux x86 shadow PPL lane routed through runner-cli parity with schema-validated diagnostics artifacts' {
         $script:workflowContent | Should -Match 'build-x86-ppl-linux-shadow:'
-        $script:workflowContent | Should -Match 'Build Linux x86 PPL in NI Linux container \(shadow\)'
-        $script:workflowContent | Should -Match 'CONTAINER_PARITY_LABVIEW_BITNESS=32'
-        $script:workflowContent | Should -Match 'CONTAINER_PARITY_BITNESS=32'
-        $script:workflowContent | Should -Match 'LABVIEW_BITNESS=32'
+        $script:workflowContent | Should -Match 'Build Linux x86 PPL via runner-cli parity \(shadow\)'
+        $script:workflowContent | Should -Match '''parity'',\s*''context'''
+        $script:workflowContent | Should -Match '''parity'',\s*''run'''
+        $script:workflowContent | Should -Match '''--mode'',\s*''linux-container'''
+        $script:workflowContent | Should -Match 'runner-cli parity context failed with exit code'
+        $script:workflowContent | Should -Match 'runner-cli parity run failed with exit code'
+        $script:workflowContent | Should -Match 'LabVIEW-\$\{LV_YEAR\}-32/labviewprofull'
         $script:workflowContent | Should -Match 'scripts/New-PplBundleManifest\.ps1'
         $script:workflowContent | Should -Match '-Bitness ''32'''
         $script:workflowContent | Should -Match 'schemas/control-plane-green-run\.schema\.json'

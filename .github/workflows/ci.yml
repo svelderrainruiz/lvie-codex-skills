@@ -86,7 +86,7 @@ jobs:
       - name: Run contract tests in Docker
         shell: pwsh
         run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Invoke-DockerContractCI.ps1 `
+          pwsh -NoProfile -File ./scripts/Invoke-DockerContractCI.ps1 `
             -DockerImage 'mcr.microsoft.com/powershell:7.4-ubuntu-22.04' `
             -TestPath './tests/*.Tests.ps1'
 
@@ -99,7 +99,7 @@ jobs:
       - name: Run VIPM activation contract tests on NI image
         shell: pwsh
         run: |
-          pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/Invoke-DockerContractCI.ps1 `
+          pwsh -NoProfile -File ./scripts/Invoke-DockerContractCI.ps1 `
             -DockerImage $env:LINUX_LABVIEW_IMAGE `
             -TestPath './tests/VipmCliActivationContract.Tests.ps1'
 
@@ -907,12 +907,16 @@ jobs:
             fi
           fi
 
-      - name: Build Linux x86 PPL in NI Linux container (shadow)
+      - name: Build Linux x86 PPL via runner-cli parity (shadow)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
 
           $consumerWorkspace = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $runnerCliProjectPath = Join-Path $consumerWorkspace 'Tooling/runner-cli/RunnerCli/RunnerCli.csproj'
+          if (-not (Test-Path -LiteralPath $runnerCliProjectPath -PathType Leaf)) {
+            throw "runner-cli project not found at '$runnerCliProjectPath'."
+          }
           $diagnosticsDir = Join-Path $env:RUNNER_TEMP 'ppl-linux-x86-shadow'
           $commandsDir = Join-Path $diagnosticsDir 'commands'
           $statusPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.status.json'
@@ -920,12 +924,17 @@ jobs:
           $logPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.log'
           $metricsPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.metrics.json'
           $bundleDir = Join-Path $env:RUNNER_TEMP 'ppl-bundle-linux-x86'
+          $contextPath = Join-Path $diagnosticsDir 'linux-x86-parity-context.json'
+          $parityScriptPath = Join-Path $consumerWorkspace 'Tooling/container-parity/runlabview-linux.sh'
+          $parityScriptBackupPath = "$parityScriptPath.issue34.bak"
           $targetRelativePath = 'resource/plugins/lv_icon_x86.lvlibp'
           $buildRelativePath = 'resource/plugins/lv_icon.lvlibp'
+          $lvRelease = ('{0}q1' -f [string]$env:LABVIEW_VERSION)
           $startedUtc = (Get-Date).ToUniversalTime()
           $status = 'success'
           $reason = ''
-          $dockerExitCode = $null
+          $contextExitCode = $null
+          $runnerCliExitCode = $null
           $capturedError = $null
 
           foreach ($path in @($diagnosticsDir, $commandsDir)) {
@@ -938,72 +947,67 @@ jobs:
           }
           New-Item -Path $bundleDir -ItemType Directory -Force | Out-Null
 
-          $linuxContainerParityCommand = @'
-          set -euo pipefail
-          script_dir=/workspace/Tooling/container-parity
-          run_script="$script_dir/runlabview-linux.sh"
-          dev_script="$script_dir/devmode-linux.sh"
-          if [[ ! -f "$run_script" || ! -f "$dev_script" ]]; then
-            echo "Missing required container parity scripts in consumer repo:" >&2
-            echo "  expected: $run_script" >&2
-            echo "  expected: $dev_script" >&2
-            echo "Tip: ensure consumer_ref includes Tooling/container-parity assets." >&2
-            ls -la /workspace/Tooling >&2 || true
-            exit 127
-          fi
-          tmp_script_dir="$(mktemp -d)"
-          cleanup() { rm -rf "$tmp_script_dir"; }
-          trap cleanup EXIT
-          cp -a "$script_dir/." "$tmp_script_dir/"
-          while IFS= read -r -d '' script_file; do
-            sed -i 's/\r$//' "$script_file"
-          done < <(find "$tmp_script_dir" -type f -name '*.sh' -print0)
-          chmod +x "$tmp_script_dir/runlabview-linux.sh" "$tmp_script_dir/devmode-linux.sh"
-          "$tmp_script_dir/runlabview-linux.sh"
-          '@
-
-          $dockerArgs = @(
+          $contextArgs = @(
             'run',
-            '--rm',
-            '-v', "${consumerWorkspace}:/workspace",
-            '-w', '/workspace',
-            '-e', 'LVIE_REPO_ROOT=/workspace',
-            '-e', 'WORKSPACE_ROOT=/workspace',
-            '-e', 'REPO_ROOT=/workspace',
-            '-e', 'LVIE_PROJECT_RELATIVE_PATH=lv_icon_editor.lvproj',
-            '-e', 'PROJECT_PATH_REL=lv_icon_editor.lvproj',
-            '-e', 'LVIE_PROJECT_PATH=/workspace/lv_icon_editor.lvproj',
-            '-e', 'PROJECT_PATH=/workspace/lv_icon_editor.lvproj',
-            '-e', 'TARGET_DIR_REL=Test/Templates',
-            '-e', 'CONTAINER_PARITY_EXCLUDE_FILES=Polymorphic Template.vi',
-            '-e', 'CONTAINER_PARITY_BUILD_SPEC=true',
-            '-e', 'CONTAINER_PARITY_BUILD_SPEC_NAME=Editor Packed Library',
-            '-e', 'CONTAINER_PARITY_TARGET_NAME=My Computer',
-            '-e', "CONTAINER_PARITY_BUILD_OUTPUT_RELATIVE_PATH=$buildRelativePath",
-            '-e', "CONTAINER_PARITY_LABVIEW_VERSION=$env:LABVIEW_VERSION",
-            '-e', 'CONTAINER_PARITY_LABVIEW_BITNESS=32',
-            '-e', 'CONTAINER_PARITY_BITNESS=32',
-            '-e', 'LABVIEW_BITNESS=32',
-            '-e', 'LABVIEW_COMMUNITY_EDITION=true',
-            $env:LINUX_LABVIEW_IMAGE,
-            'bash',
-            '-lc',
-            $linuxContainerParityCommand
+            '--project', $runnerCliProjectPath,
+            '--',
+            'parity', 'context',
+            '--repo-root', $consumerWorkspace,
+            '--lv-release', $lvRelease,
+            '--output', $contextPath
           )
+
+          $parityRunArgs = @(
+            'run',
+            '--project', $runnerCliProjectPath,
+            '--',
+            'parity', 'run',
+            '--mode', 'linux-container',
+            '--context', $contextPath,
+            '--build-spec'
+          )
+
           @(
-            'docker ' + ($dockerArgs -join ' ')
+            'dotnet ' + ($contextArgs -join ' ')
+            'dotnet ' + ($parityRunArgs -join ' ')
           ) | Set-Content -LiteralPath (Join-Path $commandsDir 'build.txt') -Encoding UTF8
 
           try {
-            & docker @dockerArgs 2>&1 | Tee-Object -FilePath $logPath -Append
-            $dockerExitCode = [int]$LASTEXITCODE
-            if ($dockerExitCode -ne 0) {
-              throw "Linux x86 PPL build command failed with exit code $dockerExitCode"
+            if (-not (Test-Path -LiteralPath $parityScriptPath -PathType Leaf)) {
+              throw "Linux parity script not found at '$parityScriptPath'."
+            }
+
+            Copy-Item -LiteralPath $parityScriptPath -Destination $parityScriptBackupPath -Force
+            $parityScriptContent = Get-Content -LiteralPath $parityScriptPath -Raw
+            $parityPathMarkerX64 = 'LABVIEW_PATH="${LABVIEW_PATH:-/usr/local/natinst/LabVIEW-${LV_YEAR}-64/labviewprofull}"'
+            $parityPathMarkerX86 = 'LABVIEW_PATH="${LABVIEW_PATH:-/usr/local/natinst/LabVIEW-${LV_YEAR}-32/labviewprofull}"'
+            if (-not $parityScriptContent.Contains($parityPathMarkerX64)) {
+              throw "Unable to enforce Linux x86 parity path; expected marker not found in '$parityScriptPath'."
+            }
+            $patchedParityScriptContent = $parityScriptContent.Replace($parityPathMarkerX64, $parityPathMarkerX86)
+            Set-Content -LiteralPath $parityScriptPath -Value $patchedParityScriptContent -Encoding UTF8
+
+            try {
+              & dotnet @contextArgs 2>&1 | Tee-Object -FilePath $logPath -Append
+              $contextExitCode = [int]$LASTEXITCODE
+              if ($contextExitCode -ne 0) {
+                throw "runner-cli parity context failed with exit code $contextExitCode."
+              }
+
+              & dotnet @parityRunArgs 2>&1 | Tee-Object -FilePath $logPath -Append
+              $runnerCliExitCode = [int]$LASTEXITCODE
+              if ($runnerCliExitCode -ne 0) {
+                throw "runner-cli parity run failed with exit code $runnerCliExitCode."
+              }
+            } finally {
+              if (Test-Path -LiteralPath $parityScriptBackupPath -PathType Leaf) {
+                Move-Item -LiteralPath $parityScriptBackupPath -Destination $parityScriptPath -Force
+              }
             }
 
             $builtPplPath = Join-Path $consumerWorkspace $buildRelativePath
             if (-not (Test-Path -LiteralPath $builtPplPath -PathType Leaf)) {
-              throw "Linux x86 build output not found at '$builtPplPath'."
+              throw "Linux x86 runner-cli parity output not found at '$builtPplPath'."
             }
 
             $targetPplPath = Join-Path $consumerWorkspace $targetRelativePath
@@ -1047,7 +1051,8 @@ jobs:
             generated_utc = $completedUtc.ToString('o')
             status = $status
             reason = $reason
-            docker_run_exit_code = $dockerExitCode
+            parity_context_exit_code = $contextExitCode
+            parity_run_exit_code = $runnerCliExitCode
             output_path = $targetRelativePath
             duration_seconds = $durationSeconds
             bundle_directory = $bundleDir
@@ -1086,7 +1091,7 @@ jobs:
             container_image = $env:LINUX_LABVIEW_IMAGE
             job_durations = @(
               [pscustomobject]@{
-                name = 'build-linux-x86-container'
+                name = 'build-linux-x86-container-runner-cli'
                 status = 'completed'
                 conclusion = if ($status -eq 'success') { 'success' } else { 'failure' }
                 duration_seconds = $durationSeconds

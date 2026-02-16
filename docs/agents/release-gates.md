@@ -121,7 +121,7 @@ Optional inputs:
   - one-time setup per runner account: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force`
   - verify with `Get-ExecutionPolicy -List`
   - CI auto-corrects and emits diagnostics with `Initialize-RunnerPowerShellPolicy.ps1`; unresolved non-compliance is hard-fail.
-  - `-ExecutionPolicy Bypass` is not allowed in governed CI/docs/script command paths.
+  - execution-policy override flags are not allowed in governed CI/docs/script command paths.
 
 ## Provenance policy
 Release notes must include CI and source-project provenance fields produced by `ci.yml` and `release-skill-layer`:
@@ -140,18 +140,19 @@ Release notes must include CI and source-project provenance fields produced by `
 
 ## Operational commands
 ```powershell
-gh api repos/<owner>/labview-icon-editor-codex-skills/actions/runs/<RUN_ID> --jq '{status, conclusion, head_sha, head_branch, run_attempt, updated_at}'
+gh api repos/<owner>/lvie-codex-skills/actions/runs/<RUN_ID> --jq '{status, conclusion, head_sha, head_branch, run_attempt, updated_at}'
 ```
 
 ```powershell
-gh api repos/<owner>/labview-icon-editor-codex-skills/actions/runs/<RUN_ID>/jobs --paginate --jq '.jobs[] | {name, status, conclusion}'
+gh api repos/<owner>/lvie-codex-skills/actions/runs/<RUN_ID>/jobs --paginate --jq '.jobs[] | {name, status, conclusion}'
 ```
 
 ```powershell
-gh api repos/<owner>/labview-icon-editor-codex-skills/actions/runs/<RUN_ID>/artifacts --jq '.artifacts[] | .name'
+gh api repos/<owner>/lvie-codex-skills/actions/runs/<RUN_ID>/artifacts --jq '.artifacts[] | .name'
 ```
 
 ## Decision examples
 - NO-GO example: CI gate fails in `build-x64-ppl-linux` and required artifacts are missing.
 - GO example: `ci-gate` and `package` succeed and all required artifacts are present for publish.
+
 

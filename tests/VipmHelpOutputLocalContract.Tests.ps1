@@ -52,7 +52,7 @@ RUN chmod +x /usr/local/bin/vipm
             $consumerRelative = [IO.Path]::GetRelativePath($script:repoRoot, $consumerRoot).Replace('\\', '/')
             $vipbRelative = "$consumerRelative/Tooling/deployment/NI Icon editor.vipb"
 
-            $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File $script:helperPath `
+            $output = & pwsh -NoProfile -File $script:helperPath `
                 -LinuxLabviewImage $imageTag `
                 -ConsumerPath $consumerRelative `
                 -VipmProjectPath $vipbRelative 2>&1 | Out-String

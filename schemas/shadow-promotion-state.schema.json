@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://svelderrainruiz.github.io/lvie-codex-skills/schemas/shadow-promotion-state.schema.json",
+  "title": "Shadow Promotion State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_utc",
+    "threshold",
+    "consecutive_green_count",
+    "promotion_ready",
+    "reset_reason",
+    "metrics_directory",
+    "evaluated_run_count",
+    "evaluated_runs"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "generated_utc": {
+      "type": "string"
+    },
+    "threshold": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "consecutive_green_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "promotion_ready": {
+      "type": "boolean"
+    },
+    "reset_reason": {
+      "type": "string"
+    },
+    "metrics_directory": {
+      "type": "string",
+      "minLength": 1
+    },
+    "required_lane_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "shadow_lane_names": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "expected_rollout_signature": {
+      "type": "string"
+    },
+    "expected_runner_pool_signature": {
+      "type": "string"
+    },
+    "evaluated_run_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "evaluated_runs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "run_id",
+          "lane_name",
+          "lane_role",
+          "qualifies",
+          "disqualifier",
+          "is_authoritative_latest_head",
+          "required_lanes_passed",
+          "shadow_passed",
+          "gate_outcome",
+          "conclusion",
+          "rollout_signature",
+          "runner_pool_signature",
+          "metrics_file",
+          "generated_utc"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lane_name": {
+            "type": "string"
+          },
+          "lane_role": {
+            "type": "string"
+          },
+          "qualifies": {
+            "type": "boolean"
+          },
+          "disqualifier": {
+            "type": "string"
+          },
+          "is_authoritative_latest_head": {
+            "type": "boolean"
+          },
+          "required_lanes_passed": {
+            "type": "boolean"
+          },
+          "shadow_passed": {
+            "type": "boolean"
+          },
+          "gate_outcome": {
+            "type": "string"
+          },
+          "conclusion": {
+            "type": "string"
+          },
+          "rollout_signature": {
+            "type": "string"
+          },
+          "runner_pool_signature": {
+            "type": "string"
+          },
+          "metrics_file": {
+            "type": "string"
+          },
+          "generated_utc": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

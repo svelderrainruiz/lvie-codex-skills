@@ -510,6 +510,10 @@ jobs:
           if (-not (Test-Path -LiteralPath $payloadManifestScript -PathType Leaf)) {
             throw "Release payload manifest script not found: $payloadManifestScript"
           }
+          $laneMatrixPath = Join-Path $env:GITHUB_WORKSPACE 'contracts/build-lane-matrix.json'
+          if (-not (Test-Path -LiteralPath $laneMatrixPath -PathType Leaf)) {
+            throw "Build lane matrix contract not found: $laneMatrixPath"
+          }
           $payloadManifestSchema = Join-Path $env:GITHUB_WORKSPACE 'schemas/release-payload-contract.schema.json'
           if (-not (Test-Path -LiteralPath $payloadManifestSchema -PathType Leaf)) {
             throw "Release payload manifest schema not found: $payloadManifestSchema"
@@ -527,6 +531,7 @@ jobs:
             -CiRunAttempt '${{ github.run_attempt }}' `
             -CiRunUrl 'https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}' `
             -OutputPath $payloadManifestPath `
+            -LaneMatrixPath $laneMatrixPath `
             -SchemaPath $payloadManifestSchema
 
           $provenanceSha = (Get-FileHash -LiteralPath $provenancePath -Algorithm SHA256).Hash.ToLowerInvariant()

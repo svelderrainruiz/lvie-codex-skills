@@ -8,14 +8,51 @@ Describe 'Release payload manifest contract' {
         $script:repoRoot = (Resolve-Path -Path (Join-Path $PSScriptRoot '..')).Path
         $script:schemaPath = Join-Path $script:repoRoot 'schemas/release-payload-contract.schema.json'
         $script:generatorPath = Join-Path $script:repoRoot 'scripts/New-ReleasePayloadManifest.ps1'
+        $script:laneMatrixPath = Join-Path $script:repoRoot 'contracts/build-lane-matrix.json'
+        $script:laneMatrixSchemaPath = Join-Path $script:repoRoot 'schemas/build-lane-matrix.schema.json'
 
-        foreach ($path in @($script:schemaPath, $script:generatorPath)) {
+        foreach ($path in @(
+            $script:schemaPath,
+            $script:generatorPath,
+            $script:laneMatrixPath,
+            $script:laneMatrixSchemaPath
+        )) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
                 throw "Required release payload contract file missing: $path"
             }
         }
 
         $script:schema = Get-Content -LiteralPath $script:schemaPath -Raw | ConvertFrom-Json -ErrorAction Stop
+        $script:laneMatrixJson = Get-Content -LiteralPath $script:laneMatrixPath -Raw
+        $laneMatrixValid = $script:laneMatrixJson | Test-Json -SchemaFile $script:laneMatrixSchemaPath -ErrorAction Stop
+        if (-not $laneMatrixValid) {
+            throw "Lane matrix contract failed schema validation: $($script:laneMatrixPath)"
+        }
+        $script:laneMatrix = $script:laneMatrixJson | ConvertFrom-Json -ErrorAction Stop
+
+        $script:laneReleaseAssets = @(
+            foreach ($lane in @($script:laneMatrix.lanes)) {
+                if ($null -eq $lane) {
+                    continue
+                }
+                if ($null -eq $lane.include_in_release_payload -or -not [bool]$lane.include_in_release_payload) {
+                    continue
+                }
+
+                [pscustomobject]@{
+                    name = [string]$lane.release_asset_name
+                    category = [string]$lane.release_asset_category
+                }
+            }
+        )
+        $script:staticReleaseAssets = @(
+            [pscustomobject]@{ name = 'lvie-codex-skill-layer-installer.exe'; category = 'installer' },
+            [pscustomobject]@{ name = 'lvie-vip-package-self-hosted.zip'; category = 'vip_package_self_hosted' },
+            [pscustomobject]@{ name = 'release-provenance.json'; category = 'provenance' }
+        )
+        $script:expectedAssets = @($script:laneReleaseAssets + $script:staticReleaseAssets)
+        $script:expectedAssetNames = @($script:expectedAssets.name | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        $script:expectedCategories = @($script:expectedAssets.category | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
     }
 
     It 'defines required top-level fields and category enum in schema' {
@@ -28,31 +65,16 @@ Describe 'Release payload manifest contract' {
         [bool]$script:schema.additionalProperties | Should -BeFalse
 
         $categories = @($script:schema.properties.assets.items.properties.category.enum)
-        foreach ($category in @(
-            'installer',
-            'ppl_bundle_windows_x64',
-            'ppl_bundle_linux_x64',
-            'ppl_bundle_linux_x86',
-            'vip_package_self_hosted',
-            'provenance'
-        )) {
+        foreach ($category in $script:expectedCategories) {
             $categories | Should -Contain $category
         }
     }
 
-    It 'generates a schema-valid release payload manifest with required assets' {
+    It 'generates a schema-valid release payload manifest with lane-matrix-required assets' {
         $tempRoot = Join-Path $env:TEMP ("release-payload-manifest-{0}" -f [guid]::NewGuid().ToString('N'))
         New-Item -Path $tempRoot -ItemType Directory -Force | Out-Null
         try {
-            $requiredFiles = @(
-                'lvie-codex-skill-layer-installer.exe',
-                'lvie-ppl-bundle-windows-x64.zip',
-                'lvie-ppl-bundle-linux-x64.zip',
-                'lvie-ppl-bundle-linux-x86.zip',
-                'lvie-vip-package-self-hosted.zip',
-                'release-provenance.json'
-            )
-            foreach ($name in $requiredFiles) {
+            foreach ($name in $script:expectedAssetNames) {
                 $path = Join-Path $tempRoot $name
                 Set-Content -LiteralPath $path -Value "fixture-$name" -Encoding UTF8
             }
@@ -62,12 +84,13 @@ Describe 'Release payload manifest contract' {
                 -StageDirectory $tempRoot `
                 -SourceProjectRepo 'svelderrainruiz/labview-icon-editor' `
                 -SourceProjectRef 'main' `
-                -SourceProjectSha '1234567890abcdef' `
-                -CiRepository 'svelderrainruiz/labview-icon-editor-codex-skills' `
+                -SourceProjectSha '1234567890abcdef1234567890abcdef12345678' `
+                -CiRepository 'svelderrainruiz/lvie-codex-skills' `
                 -CiRunId '100' `
                 -CiRunAttempt '1' `
-                -CiRunUrl 'https://github.com/svelderrainruiz/labview-icon-editor-codex-skills/actions/runs/100' `
+                -CiRunUrl 'https://github.com/svelderrainruiz/lvie-codex-skills/actions/runs/100' `
                 -OutputPath (Join-Path $tempRoot 'release-payload-manifest.json') `
+                -LaneMatrixPath $script:laneMatrixPath `
                 -SchemaPath $script:schemaPath
 
             $manifestPath = Join-Path $tempRoot 'release-payload-manifest.json'
@@ -76,16 +99,12 @@ Describe 'Release payload manifest contract' {
             $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
             [string]$manifest.schema_version | Should -Be '1.0'
             [string]$manifest.release_tag | Should -Be 'v0.1.0'
-            @($manifest.assets).Count | Should -Be 6
-            foreach ($category in @(
-                'installer',
-                'ppl_bundle_windows_x64',
-                'ppl_bundle_linux_x64',
-                'ppl_bundle_linux_x86',
-                'vip_package_self_hosted',
-                'provenance'
-            )) {
+            @($manifest.assets).Count | Should -Be $script:expectedAssetNames.Count
+            foreach ($category in $script:expectedCategories) {
                 @($manifest.assets.category) | Should -Contain $category
+            }
+            foreach ($name in $script:expectedAssetNames) {
+                @($manifest.assets.name) | Should -Contain $name
             }
             foreach ($asset in @($manifest.assets)) {
                 [string]$asset.sha256 | Should -Match '^[a-f0-9]{64}$'
@@ -99,18 +118,15 @@ Describe 'Release payload manifest contract' {
         }
     }
 
-    It 'fails when a required staged release asset is missing' {
+    It 'fails when a lane-matrix-required staged release asset is missing' {
         $tempRoot = Join-Path $env:TEMP ("release-payload-missing-{0}" -f [guid]::NewGuid().ToString('N'))
         New-Item -Path $tempRoot -ItemType Directory -Force | Out-Null
         try {
-            $requiredFiles = @(
-                'lvie-codex-skill-layer-installer.exe',
-                'lvie-ppl-bundle-windows-x64.zip',
-                'lvie-ppl-bundle-linux-x64.zip',
-                'lvie-ppl-bundle-linux-x86.zip',
-                'release-provenance.json'
-            )
-            foreach ($name in $requiredFiles) {
+            $missingName = $script:laneReleaseAssets[0].name
+            foreach ($name in $script:expectedAssetNames) {
+                if ($name -eq $missingName) {
+                    continue
+                }
                 $path = Join-Path $tempRoot $name
                 Set-Content -LiteralPath $path -Value "fixture-$name" -Encoding UTF8
             }
@@ -123,11 +139,12 @@ Describe 'Release payload manifest contract' {
                     -StageDirectory $tempRoot `
                     -SourceProjectRepo 'svelderrainruiz/labview-icon-editor' `
                     -SourceProjectRef 'main' `
-                    -SourceProjectSha '1234567890abcdef' `
-                    -CiRepository 'svelderrainruiz/labview-icon-editor-codex-skills' `
+                    -SourceProjectSha '1234567890abcdef1234567890abcdef12345678' `
+                    -CiRepository 'svelderrainruiz/lvie-codex-skills' `
                     -CiRunId '100' `
                     -CiRunAttempt '1' `
-                    -CiRunUrl 'https://github.com/svelderrainruiz/labview-icon-editor-codex-skills/actions/runs/100' `
+                    -CiRunUrl 'https://github.com/svelderrainruiz/lvie-codex-skills/actions/runs/100' `
+                    -LaneMatrixPath $script:laneMatrixPath `
                     -SchemaPath $script:schemaPath
             }
             catch {
@@ -137,6 +154,7 @@ Describe 'Release payload manifest contract' {
 
             $failed | Should -BeTrue
             $errorMessage | Should -Match 'Required staged release asset missing'
+            $errorMessage | Should -Match ([regex]::Escape($missingName))
         }
         finally {
             if (Test-Path -LiteralPath $tempRoot -PathType Container) {

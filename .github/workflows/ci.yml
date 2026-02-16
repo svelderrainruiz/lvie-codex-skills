@@ -66,9 +66,9 @@ env:
   CONSUMER_EXPECTED_SHA: ${{ inputs.source_project_sha || vars.LVIE_SOURCE_PROJECT_SHA || '' }}
   WINDOWS_LABVIEW_IMAGE: nationalinstruments/labview:2026q1-windows
   LINUX_LABVIEW_IMAGE: nationalinstruments/labview:2026q1-linux-pwsh
-  WINDOWS_PPL_OUTPUT_PATH: consumer/resource/plugins/lv_icon.windows.lvlibp
-  LINUX_PPL_OUTPUT_PATH: consumer/resource/plugins/lv_icon.linux.lvlibp
-  VIPB_PROJECT_PATH: 'consumer/Tooling/deployment/NI Icon editor.vipb'
+  WINDOWS_PPL_OUTPUT_PATH: resource/plugins/lv_icon.lvlibp
+  LINUX_PPL_OUTPUT_PATH: resource/plugins/lv_icon.lvlibp
+  VIPB_PROJECT_PATH: 'Tooling/deployment/NI Icon editor.vipb'
   LABVIEW_PROFILES_ROOT: profiles/labview
   DEFAULT_LABVIEW_PROFILE: ${{ inputs.labview_profile || vars.LVIE_LABVIEW_PROFILE || 'lv2026' }}
   PARITY_ENFORCEMENT_PROFILE: ${{ vars.LVIE_PARITY_ENFORCEMENT_PROFILE || 'auto' }}
@@ -2346,7 +2346,7 @@ jobs:
 
           & "$env:GITHUB_WORKSPACE/scripts/Invoke-PrepareVipbDiagnostics.ps1" `
             -RepoRoot (Join-Path $env:GITHUB_WORKSPACE 'consumer') `
-            -VipbPath (Join-Path $env:GITHUB_WORKSPACE $env:VIPB_PROJECT_PATH) `
+            -VipbPath (Join-Path (Join-Path $env:GITHUB_WORKSPACE 'consumer') $env:VIPB_PROJECT_PATH) `
             -ReleaseNotesFile (Join-Path $env:GITHUB_WORKSPACE 'consumer/Tooling/deployment/release_notes.md') `
             -DisplayInformationJson $env:DISPLAY_INFORMATION_JSON `
             -LabVIEWVersionYear '${{ steps.labview-version.outputs.year }}' `
@@ -2695,7 +2695,7 @@ jobs:
             throw "Prepared VIPB artifact is missing '$sourceVipbPath'."
           }
 
-          $targetVipbPath = Join-Path $env:GITHUB_WORKSPACE $env:VIPB_PROJECT_PATH
+          $targetVipbPath = Join-Path (Join-Path $env:GITHUB_WORKSPACE 'consumer') $env:VIPB_PROJECT_PATH
           $targetVipbDirectory = Split-Path -Path $targetVipbPath -Parent
           if (-not (Test-Path -LiteralPath $targetVipbDirectory -PathType Container)) {
             New-Item -Path $targetVipbDirectory -ItemType Directory -Force | Out-Null
@@ -2747,7 +2747,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-contract-vipb-modified-self-hosted-${{ github.run_id }}
-          path: ${{ env.VIPB_PROJECT_PATH }}
+          path: ${{ github.workspace }}/consumer/${{ env.VIPB_PROJECT_PATH }}
           if-no-files-found: warn
 
       - name: Build VI Package (LV 64-bit)

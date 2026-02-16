@@ -180,4 +180,26 @@ gh api repos/<owner>/lvie-codex-skills/actions/runs/<RUN_ID>/artifacts --jq '.ar
 - NO-GO example: CI gate fails in `build-ppl-container-linux-x64` and required artifacts are missing.
 - GO example: `ci-gate` and `package` succeed and all required artifacts are present for publish.
 
+## Issue #29 acceptance evidence mapping
+Acceptance to evidence:
+- `schema-valid green-run metrics`
+  - `tests/ReleaseMetricsContract.Tests.ps1`
+  - `tests/ShadowPromotionContract.Tests.ps1`
+- `no SHA pinning for codex lock path`
+  - `tests/DockerContractCiWorkflowContract.Tests.ps1`
+  - `tests/ReleaseWorkflowContract.Tests.ps1`
+- `release asset+manifest verification`
+  - `tests/ReleasePayloadManifestContract.Tests.ps1`
+  - `tests/ReleaseWorkflowContract.Tests.ps1`
+
+Required promotion-gate evidence artifact (PR2):
+- `shadow-promotion-state-<run_id>`
+
+Required promotion-gate summary fields:
+- threshold
+- consecutive green count
+- promotion ready
+- reset reason
+- evaluated run IDs
+
 

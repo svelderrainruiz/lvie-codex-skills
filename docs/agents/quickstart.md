@@ -176,4 +176,38 @@ When `release-skill-layer` publishes a tag, expect:
 - `release-provenance.json`
 - `release-payload-manifest.json`
 
+## 9) Issue #29 closeout workflow (agent)
+Stacked PR order (exact):
+1. PR0: base `main`, head `feat/issue-29-pr0-hygiene-noise`
+2. PR1: base `feat/issue-29-pr0-hygiene-noise`, head `feat/issue-29-pr1-lock-rotation`
+3. PR2: base `feat/issue-29-pr1-lock-rotation`, head `feat/issue-29-pr2-shadow-promotion-gate`
+
+Evidence fields to capture per PR:
+- `PR #`
+- head commit SHA
+- workflow run IDs
+- promotion state artifact reference (PR2 only): `shadow-promotion-state-<run_id>`
+
+Evidence retrieval commands:
+
+```powershell
+gh pr list --repo <owner>/lvie-codex-skills --state open --json number,title,headRefName,baseRefName,url
+```
+
+```powershell
+gh pr view <PR_NUMBER> --repo <owner>/lvie-codex-skills --json commits --jq '.commits[-1].oid'
+```
+
+```powershell
+gh run list --repo <owner>/lvie-codex-skills --workflow "CI Pipeline" --branch <PR_HEAD_BRANCH> --event pull_request --limit 10
+```
+
+```powershell
+gh run list --repo <owner>/lvie-codex-skills --workflow shadow-promotion-gate --branch <PR_HEAD_BRANCH> --event pull_request --limit 10
+```
+
+```powershell
+gh api repos/<owner>/lvie-codex-skills/actions/runs/<RUN_ID>/artifacts --jq '.artifacts[] | {name, id, expired}'
+```
+
 

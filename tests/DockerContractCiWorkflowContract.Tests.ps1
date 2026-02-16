@@ -161,13 +161,17 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'Upload Windows x64 PPL bundle artifact'
     }
 
-    It 'builds linux x64 PPL with CRLF-safe temp copy and uploads linux x64 bundle artifact' {
-        $expectedSedNormalization = [regex]::Escape('sed -i ''s/\r$//'' "$script_file"')
-        $script:workflowContent | Should -Match 'Build Linux x64 PPL in NI Linux container'
-        $script:workflowContent | Should -Match 'tmp_script_dir="\$\(mktemp -d\)"'
-        $script:workflowContent | Should -Match 'cp -a "\$script_dir/\." "\$tmp_script_dir/"'
-        $script:workflowContent | Should -Match $expectedSedNormalization
-        $script:workflowContent | Should -Match '"\$tmp_script_dir/runlabview-linux\.sh"'
+    It 'builds linux x64 PPL via runner-cli parity and uploads linux x64 bundle artifact' {
+        $script:workflowContent | Should -Match 'Resolve Linux parity context via runner-cli'
+        $script:workflowContent | Should -Match '''parity'',\s*''context'''
+        $script:workflowContent | Should -Match '''--lv-release'',\s*\$lvRelease'
+        $script:workflowContent | Should -Match 'LINUX_PARITY_CONTEXT_PATH='
+        $script:workflowContent | Should -Match 'Build Linux x64 PPL via runner-cli parity'
+        $script:workflowContent | Should -Match '''parity'',\s*''run'''
+        $script:workflowContent | Should -Match '''--mode'',\s*''linux-container'''
+        $script:workflowContent | Should -Match '''--context'',\s*\$contextPath'
+        $script:workflowContent | Should -Match 'runner-cli parity context failed with exit code'
+        $script:workflowContent | Should -Match 'runner-cli parity run failed with exit code'
         $script:workflowContent | Should -Match 'Create Linux x64 PPL bundle manifest'
         $script:workflowContent | Should -Match 'Upload Linux raw x64 PPL artifact'
         $script:workflowContent | Should -Match 'docker-contract-ppl-linux-raw-x64-\$\{\{\s*github\.run_id\s*\}\}'

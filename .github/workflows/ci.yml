@@ -110,11 +110,14 @@ jobs:
       consumer_repo: ${{ steps.resolve.outputs.consumer_repo }}
       consumer_ref: ${{ steps.resolve.outputs.consumer_ref }}
       consumer_sha: ${{ steps.resolve.outputs.consumer_sha }}
+      consumer_sha_mode: ${{ steps.resolve.outputs.consumer_sha_mode }}
       labview_profile: ${{ steps.resolve.outputs.labview_profile }}
       parity_enforcement_profile: ${{ steps.resolve.outputs.parity_enforcement_profile }}
     steps:
       - id: resolve
         name: Resolve source project target from inputs and repository variables
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -138,8 +141,17 @@ jobs:
           }
           $consumerRef = $consumerRef.Trim()
 
+          $consumerShaMode = 'floating_ref'
           if ([string]::IsNullOrWhiteSpace($consumerSha)) {
-            throw "Resolved source project SHA is empty. Strict pin is required; set input 'source_project_sha' or repository variable 'LVIE_SOURCE_PROJECT_SHA'."
+            $escapedRef = [System.Uri]::EscapeDataString($consumerRef)
+            $resolvedShaOutput = & gh api "repos/$consumerRepo/commits/$escapedRef" --jq '.sha'
+            $resolveExitCode = $LASTEXITCODE
+            if ($resolveExitCode -ne 0) {
+              throw "Unable to resolve source project SHA from '$consumerRepo@$consumerRef'. gh api exited with code $resolveExitCode."
+            }
+            $consumerSha = [string]$resolvedShaOutput
+          } else {
+            $consumerShaMode = 'pinned'
           }
           $consumerSha = $consumerSha.Trim().ToLowerInvariant()
           if ($consumerSha -notmatch '^[0-9a-f]{40}$') {
@@ -164,6 +176,7 @@ jobs:
           "consumer_repo=$consumerRepo" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "consumer_ref=$consumerRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "consumer_sha=$consumerSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "consumer_sha_mode=$consumerShaMode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "labview_profile=$labviewProfile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "parity_enforcement_profile=$parityProfile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -173,6 +186,7 @@ jobs:
             "- source_project_repo: $consumerRepo"
             "- source_project_ref: $consumerRef"
             "- source_project_sha: $consumerSha"
+            "- source_project_sha_mode: $consumerShaMode"
             "- labview_profile: $labviewProfile"
             "- parity_enforcement_profile: $parityProfile"
           ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

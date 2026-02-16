@@ -74,7 +74,9 @@ Compatibility-only (deprecated) inputs:
     - workflow input (manual dispatch),
     - repository variables (`LVIE_SOURCE_PROJECT_*`, `LVIE_LABVIEW_PROFILE`),
     - deterministic fallback (`<owner>/labview-icon-editor`, `main`) for repo/ref.
-  - strict source SHA pin is required (`LVIE_SOURCE_PROJECT_SHA` or explicit dispatch input).
+  - optional source SHA pin policy:
+    - `pinned` mode when `consumer_sha` / `LVIE_SOURCE_PROJECT_SHA` is provided.
+    - `floating_ref` mode when SHA pin is omitted (resolver fetches commit SHA from repo/ref).
 - If the resolved tag already exists, workflow follows deterministic skip path:
   - `should_release=false`
   - `skip_reason=tag_exists`
@@ -91,7 +93,9 @@ pwsh -NoProfile -File ./scripts/Initialize-ForkPortability.ps1 `
   -SourceProjectRef 'main'
 ```
 
-Rotate strict SHA pin later without changing repo/ref:
+Default bootstrap behavior keeps floating-ref mode by removing `LVIE_SOURCE_PROJECT_SHA` if present.
+
+Optionally set/rotate a deterministic SHA pin later without changing repo/ref:
 
 ```powershell
 pwsh -NoProfile -File ./scripts/Initialize-ForkPortability.ps1 `

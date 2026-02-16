@@ -58,6 +58,7 @@ jobs:
       consumer_repo: ${{ steps.resolve.outputs.consumer_repo }}
       consumer_ref: ${{ steps.resolve.outputs.consumer_ref }}
       consumer_sha: ${{ steps.resolve.outputs.consumer_sha }}
+      consumer_sha_mode: ${{ steps.resolve.outputs.consumer_sha_mode }}
       run_self_hosted: ${{ steps.resolve.outputs.run_self_hosted }}
       run_build_spec: ${{ steps.resolve.outputs.run_build_spec }}
       labview_profile: ${{ steps.resolve.outputs.labview_profile }}
@@ -220,8 +221,17 @@ jobs:
           }
           $consumerRef = $consumerRef.Trim()
 
+          $consumerShaMode = 'floating_ref'
           if ([string]::IsNullOrWhiteSpace($consumerSha)) {
-            throw "Resolved source project SHA is empty. Strict pin is required; set workflow input 'consumer_sha' or repository variable 'LVIE_SOURCE_PROJECT_SHA'."
+            $escapedRef = [System.Uri]::EscapeDataString($consumerRef)
+            $resolvedShaOutput = & gh api "repos/$consumerRepo/commits/$escapedRef" --jq '.sha'
+            $resolveExitCode = $LASTEXITCODE
+            if ($resolveExitCode -ne 0) {
+              throw "Unable to resolve source project SHA from '$consumerRepo@$consumerRef'. gh api exited with code $resolveExitCode."
+            }
+            $consumerSha = [string]$resolvedShaOutput
+          } else {
+            $consumerShaMode = 'pinned'
           }
           $consumerSha = $consumerSha.Trim().ToLowerInvariant()
           if ($consumerSha -notmatch '^[0-9a-f]{40}$') {
@@ -251,6 +261,7 @@ jobs:
           "consumer_repo=$consumerRepo" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "consumer_ref=$consumerRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "consumer_sha=$consumerSha" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "consumer_sha_mode=$consumerShaMode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "run_self_hosted=$runSelfHosted" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "run_build_spec=$runBuildSpec" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "labview_profile=$labviewProfile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
@@ -269,6 +280,7 @@ jobs:
             "- Source project repo: $consumerRepo"
             "- Source project ref: $consumerRef"
             "- Source project sha: $consumerSha"
+            "- Source project sha mode: $consumerShaMode"
             "- LabVIEW profile: $labviewProfile"
             "- source_labview_version_override: $sourceLabviewOverrideDisplay"
             "- should_release: $shouldRelease"

@@ -27,8 +27,9 @@ CI-gated release contract:
   - auto path derives `release_tag` from `manifest.json` (`v<manifest.version>`).
   - auto path skips cleanly with `skip_reason=tag_exists` when that tag already exists.
 - source project target resolution chain is deterministic:
-  - `workflow input` -> `repository variable` -> `fallback`
-  - strict source SHA pin is required (missing SHA fails fast).
+  - repo/ref: `workflow input` -> `repository variable` -> `fallback`
+  - SHA mode: explicit pin (`source_project_sha` / `LVIE_SOURCE_PROJECT_SHA`) uses `pinned`; omitted pin uses `floating_ref` and resolves SHA from repo/ref.
+  - resolved SHA is always verified against checked-out `HEAD`.
 - Release payload includes the NSIS installer and core CI artifacts:
   - `lvie-codex-skill-layer-installer.exe`
   - `lvie-ppl-container-windows-x64.zip`
@@ -49,7 +50,8 @@ CI-gated release contract:
 - Resolver behavior:
   - computes default `release_tag` from `manifest.json` version.
   - resolves source project target from `workflow input` -> `repository variable` -> deterministic fallback.
-  - enforces strict source SHA pin for release/CI gate execution.
+  - supports optional source SHA pin (`pinned` when provided, `floating_ref` when omitted).
+  - always emits resolved source SHA for provenance and CI gate checkout verification.
   - on auto path, skips release deterministically when `v<manifest.version>` already exists (`tag_exists`).
   - on manual path, keeps explicit dispatch override semantics.
 - Skip path is non-failure and records summary under job `release-skipped`.
@@ -67,11 +69,11 @@ pwsh -NoProfile -File ./scripts/Initialize-ForkPortability.ps1 `
 Repository variable contract written by bootstrap:
 - `LVIE_SOURCE_PROJECT_REPO`
 - `LVIE_SOURCE_PROJECT_REF`
-- `LVIE_SOURCE_PROJECT_SHA` (strict pin; required by CI/release resolvers)
+- `LVIE_SOURCE_PROJECT_SHA` (optional pin; omitted by default unless explicitly refreshed)
 - `LVIE_LABVIEW_PROFILE` (optional, default `lv2026`)
 - `LVIE_PARITY_ENFORCEMENT_PROFILE` (`auto|strict|container-only`, default `auto`)
 
-Deterministic SHA pin rotation:
+Optional deterministic SHA pin refresh:
 
 ```powershell
 pwsh -NoProfile -File ./scripts/Initialize-ForkPortability.ps1 `
@@ -132,9 +134,10 @@ Installer contract:
     - workflow inputs `source_project_repo`, `source_project_ref`, `source_project_sha`
     - repository variables `LVIE_SOURCE_PROJECT_REPO`, `LVIE_SOURCE_PROJECT_REF`, `LVIE_SOURCE_PROJECT_SHA`
     - fallback for repo/ref: `<github.repository_owner>/labview-icon-editor`, `main`
-  - strict pin:
-    - `source_project_sha` / `LVIE_SOURCE_PROJECT_SHA` is required
-    - missing or malformed SHA fails in `resolve-source-target` before build lanes start
+  - SHA mode policy:
+    - pinned: `source_project_sha` / `LVIE_SOURCE_PROJECT_SHA` provided and validated as 40-char lowercase hex
+    - floating_ref: SHA omitted, resolver queries `gh api repos/<repo>/commits/<ref> --jq .sha`
+    - malformed or unresolved SHA fails in `resolve-source-target` before build lanes start
   - windows output path: `consumer/resource/plugins/lv_icon.windows.lvlibp`
   - linux output path: `consumer/resource/plugins/lv_icon.linux.lvlibp`
 - Native self-hosted packaging contract:

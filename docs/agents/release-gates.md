@@ -88,8 +88,10 @@ Optional inputs:
   - workflow inputs (manual dispatch),
   - repository variables (`LVIE_SOURCE_PROJECT_REPO`, `LVIE_SOURCE_PROJECT_REF`, `LVIE_SOURCE_PROJECT_SHA`, `LVIE_LABVIEW_PROFILE`),
   - deterministic fallback for repo/ref (`<owner>/labview-icon-editor`, `main`).
-- Strict pin remains mandatory:
-  - if `consumer_sha`/`LVIE_SOURCE_PROJECT_SHA` is missing or invalid, release resolves to deterministic failure (no publish).
+- Optional source SHA pin policy:
+  - pinned mode: if `consumer_sha` / `LVIE_SOURCE_PROJECT_SHA` is provided, it must be a valid 40-char SHA.
+  - floating-ref mode: if SHA pin is omitted, resolver resolves commit SHA from `consumer_repo + consumer_ref`.
+  - invalid or unresolved SHA is still deterministic failure (no publish).
 - Manual dispatch may override resolved defaults when needed.
 
 ## Fork bootstrap policy
@@ -98,10 +100,10 @@ Optional inputs:
 - Writes/updates repository variable contract:
   - `LVIE_SOURCE_PROJECT_REPO`
   - `LVIE_SOURCE_PROJECT_REF`
-  - `LVIE_SOURCE_PROJECT_SHA`
+  - `LVIE_SOURCE_PROJECT_SHA` (optional pin; removed by default unless explicitly refreshed)
   - `LVIE_LABVIEW_PROFILE`
   - `LVIE_PARITY_ENFORCEMENT_PROFILE`
-- Deterministic SHA rotation:
+- Optional deterministic SHA pin refresh:
   - use `-RefreshSourceSha` on the bootstrap script.
 
 ## Self-hosted preflight policy

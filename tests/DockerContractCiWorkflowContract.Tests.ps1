@@ -365,6 +365,7 @@ Describe 'Docker contract CI workflow contract' {
 
     It 'consumes windows x64 PPL and linux-prepared VIPB, then only builds native x86 in self-hosted lane' {
         $script:workflowContent | Should -Match 'Apply effective \.lvversion for self-hosted build'
+        $script:workflowContent | Should -Match 'build-vip-self-hosted:\s*[\s\S]*?Resolve LabVIEW version from source project repo[\s\S]*?"raw=\$\(\$lvInfo\.Raw\)"'
         $script:workflowContent | Should -Match 'Download Windows x64 PPL bundle artifact'
         $script:workflowContent | Should -Match 'Download prepared VIPB artifact'
         $script:workflowContent | Should -Match 'actions/download-artifact@v4'

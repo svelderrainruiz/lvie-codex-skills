@@ -33,6 +33,7 @@ CI-gated release contract:
   - `lvie-codex-skill-layer-installer.exe`
   - `lvie-ppl-bundle-windows-x64.zip`
   - `lvie-ppl-bundle-linux-x64.zip`
+  - `lvie-ppl-bundle-linux-x86.zip`
   - `lvie-vip-package-self-hosted.zip`
   - `release-provenance.json`
   - `release-payload-manifest.json`
@@ -99,6 +100,7 @@ Installer contract:
   - `docker-ci` -> `run-lunit-smoke-x64` (required native smoke gate on self-hosted Windows)
   - optional: `docker-ci` -> `run-lunit-smoke-lv2020x64-edge` (non-gating LV2020 x64 edge diagnostics)
   - `docker-ci` -> `build-x64-ppl-windows` -> `build-x64-ppl-linux`
+  - advisory: `docker-ci` -> `build-x86-ppl-linux-shadow` (non-gating Linux x86 container PPL shadow + metrics)
   - `docker-ci` -> `gather-release-notes`
   - `docker-ci` -> `resolve-labview-profile`
   - `docker-ci` -> `validate-pylavi-docker-source-project` (non-gating deterministic source-project LabVIEW file validation in Docker)
@@ -178,6 +180,16 @@ Installer contract:
   - `docker-contract-ppl-bundle-linux-x64-<run_id>` containing:
     - `lv_icon.linux.lvlibp`
     - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
+  - advisory `docker-contract-ppl-linux-raw-x86-<run_id>` containing:
+    - `consumer/resource/plugins/lv_icon_x86.lvlibp`
+  - advisory `docker-contract-ppl-bundle-linux-x86-<run_id>` containing:
+    - `lv_icon_x86.lvlibp`
+    - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
+  - advisory `docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id>` containing:
+    - `ppl-linux-x86-shadow.status.json`
+    - `ppl-linux-x86-shadow.result.json`
+    - `ppl-linux-x86-shadow.log`
+    - `ppl-linux-x86-shadow.metrics.json` (schema-validated performance metadata)
   - `docker-contract-release-notes-<run_id>` containing:
     - `release_notes.md`
     - `release-notes-manifest.json` (SHA256 and size for the gathered release notes payload)

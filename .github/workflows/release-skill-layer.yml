@@ -408,6 +408,13 @@ jobs:
           path: ${{ runner.temp }}/release-assets/ppl-bundle-linux
           merge-multiple: true
 
+      - name: Download Linux x86 PPL bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: docker-contract-ppl-bundle-linux-x86-*
+          path: ${{ runner.temp }}/release-assets/ppl-bundle-linux-x86
+          merge-multiple: true
+
       - name: Download self-hosted VIP package artifact
         uses: actions/download-artifact@v4
         with:
@@ -435,9 +442,10 @@ jobs:
           $installerDir = Join-Path $assetsRoot 'installer'
           $windowsBundleDir = Join-Path $assetsRoot 'ppl-bundle-windows'
           $linuxBundleDir = Join-Path $assetsRoot 'ppl-bundle-linux'
+          $linuxX86BundleDir = Join-Path $assetsRoot 'ppl-bundle-linux-x86'
           $vipPackageDir = Join-Path $assetsRoot 'vip-package-self-hosted'
 
-          foreach ($requiredDir in @($installerDir, $windowsBundleDir, $linuxBundleDir, $vipPackageDir)) {
+          foreach ($requiredDir in @($installerDir, $windowsBundleDir, $linuxBundleDir, $linuxX86BundleDir, $vipPackageDir)) {
             if (-not (Test-Path -LiteralPath $requiredDir -PathType Container)) {
               throw "Required release asset directory missing: $requiredDir"
             }
@@ -459,6 +467,10 @@ jobs:
           if (Test-Path -LiteralPath $linuxZipPath -PathType Leaf) { Remove-Item -LiteralPath $linuxZipPath -Force }
           Compress-Archive -Path (Join-Path $linuxBundleDir '*') -DestinationPath $linuxZipPath
 
+          $linuxX86ZipPath = Join-Path $stageDir 'lvie-ppl-bundle-linux-x86.zip'
+          if (Test-Path -LiteralPath $linuxX86ZipPath -PathType Leaf) { Remove-Item -LiteralPath $linuxX86ZipPath -Force }
+          Compress-Archive -Path (Join-Path $linuxX86BundleDir '*') -DestinationPath $linuxX86ZipPath
+
           $vipZipPath = Join-Path $stageDir 'lvie-vip-package-self-hosted.zip'
           if (Test-Path -LiteralPath $vipZipPath -PathType Leaf) { Remove-Item -LiteralPath $vipZipPath -Force }
           Compress-Archive -Path (Join-Path $vipPackageDir '*') -DestinationPath $vipZipPath
@@ -467,6 +479,7 @@ jobs:
             Get-Item -LiteralPath $stagedInstallerPath
             Get-Item -LiteralPath $windowsZipPath
             Get-Item -LiteralPath $linuxZipPath
+            Get-Item -LiteralPath $linuxX86ZipPath
             Get-Item -LiteralPath $vipZipPath
           )
 
@@ -539,6 +552,7 @@ jobs:
             "- lvie-codex-skill-layer-installer.exe (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-codex-skill-layer-installer.exe' } | Select-Object -ExpandProperty sha256))",
             "- lvie-ppl-bundle-windows-x64.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-bundle-windows-x64.zip' } | Select-Object -ExpandProperty sha256))",
             "- lvie-ppl-bundle-linux-x64.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-bundle-linux-x64.zip' } | Select-Object -ExpandProperty sha256))",
+            "- lvie-ppl-bundle-linux-x86.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-bundle-linux-x86.zip' } | Select-Object -ExpandProperty sha256))",
             "- lvie-vip-package-self-hosted.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-vip-package-self-hosted.zip' } | Select-Object -ExpandProperty sha256))",
             "- release-provenance.json (SHA256: $provenanceSha)",
             "- release-payload-manifest.json (SHA256: $payloadManifestSha)",

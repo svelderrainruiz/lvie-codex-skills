@@ -1045,6 +1045,357 @@ jobs:
           path: ${{ runner.temp }}/ppl-bundle-linux
           if-no-files-found: error
 
+  build-x86-ppl-linux-shadow:
+    runs-on: ubuntu-latest
+    needs: [docker-ci, resolve-source-target, build-x64-ppl-linux]
+    continue-on-error: true
+    env:
+      CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
+      CONSUMER_REF: ${{ needs.resolve-source-target.outputs.consumer_ref }}
+      CONSUMER_EXPECTED_SHA: ${{ needs.resolve-source-target.outputs.consumer_sha }}
+    steps:
+      - name: Checkout skill repository
+        uses: actions/checkout@v4
+
+      - name: Checkout source project repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONSUMER_REPO }}
+          ref: ${{ env.CONSUMER_REF }}
+          path: consumer
+
+      - name: Verify checked out source project SHA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualSha = (git -C consumer rev-parse HEAD).Trim()
+          if ($actualSha -ne $env:CONSUMER_EXPECTED_SHA) {
+            throw "Source project SHA mismatch. Expected '$env:CONSUMER_EXPECTED_SHA', got '$actualSha'."
+          }
+          Write-Host "Source project SHA verified: $actualSha"
+
+      - name: Validate Linux container parity assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$GITHUB_WORKSPACE/consumer/Tooling/container-parity"
+          run_script="$root/runlabview-linux.sh"
+          dev_script="$root/devmode-linux.sh"
+          if [[ ! -f "$run_script" || ! -f "$dev_script" ]]; then
+            echo "Missing required container parity scripts in consumer repo:" >&2
+            echo "  expected: $run_script" >&2
+            echo "  expected: $dev_script" >&2
+            echo "Tip: ensure consumer_ref includes Tooling/container-parity assets." >&2
+            ls -la "$GITHUB_WORKSPACE/consumer/Tooling" >&2 || true
+            exit 127
+          fi
+
+      - name: Ensure NI Linux image availability
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! docker image inspect "$LINUX_LABVIEW_IMAGE" >/dev/null 2>&1; then
+            if ! docker pull "$LINUX_LABVIEW_IMAGE"; then
+              dockerfile_path="$GITHUB_WORKSPACE/docker/ni-lv-pwsh.Dockerfile"
+              if [[ -f "$dockerfile_path" ]]; then
+                echo "Preflight: pull failed; attempting local build from '$dockerfile_path'" >&2
+                docker build -t "$LINUX_LABVIEW_IMAGE" -f "$dockerfile_path" "$GITHUB_WORKSPACE"
+              else
+                echo "Unable to pull Linux image and local Dockerfile not found: $LINUX_LABVIEW_IMAGE" >&2
+                exit 1
+              fi
+            fi
+          fi
+
+      - name: Build Linux x86 PPL in NI Linux container (shadow)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $consumerWorkspace = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP 'ppl-linux-x86-shadow'
+          $commandsDir = Join-Path $diagnosticsDir 'commands'
+          $statusPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.status.json'
+          $resultPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.result.json'
+          $logPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.log'
+          $metricsPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.metrics.json'
+          $bundleDir = Join-Path $env:RUNNER_TEMP 'ppl-bundle-linux-x86'
+          $targetRelativePath = 'resource/plugins/lv_icon_x86.lvlibp'
+          $buildRelativePath = 'resource/plugins/lv_icon.lvlibp'
+          $startedUtc = (Get-Date).ToUniversalTime()
+          $status = 'success'
+          $reason = ''
+          $dockerExitCode = $null
+          $capturedError = $null
+
+          foreach ($path in @($diagnosticsDir, $commandsDir)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+              New-Item -Path $path -ItemType Directory -Force | Out-Null
+            }
+          }
+          if (Test-Path -LiteralPath $bundleDir -PathType Container) {
+            Remove-Item -LiteralPath $bundleDir -Recurse -Force
+          }
+          New-Item -Path $bundleDir -ItemType Directory -Force | Out-Null
+
+          $linuxContainerParityCommand = @'
+          set -euo pipefail
+          script_dir=/workspace/Tooling/container-parity
+          run_script="$script_dir/runlabview-linux.sh"
+          dev_script="$script_dir/devmode-linux.sh"
+          if [[ ! -f "$run_script" || ! -f "$dev_script" ]]; then
+            echo "Missing required container parity scripts in consumer repo:" >&2
+            echo "  expected: $run_script" >&2
+            echo "  expected: $dev_script" >&2
+            echo "Tip: ensure consumer_ref includes Tooling/container-parity assets." >&2
+            ls -la /workspace/Tooling >&2 || true
+            exit 127
+          fi
+          tmp_script_dir="$(mktemp -d)"
+          cleanup() { rm -rf "$tmp_script_dir"; }
+          trap cleanup EXIT
+          cp -a "$script_dir/." "$tmp_script_dir/"
+          while IFS= read -r -d '' script_file; do
+            sed -i 's/\r$//' "$script_file"
+          done < <(find "$tmp_script_dir" -type f -name '*.sh' -print0)
+          chmod +x "$tmp_script_dir/runlabview-linux.sh" "$tmp_script_dir/devmode-linux.sh"
+          "$tmp_script_dir/runlabview-linux.sh"
+          '@
+
+          $dockerArgs = @(
+            'run',
+            '--rm',
+            '-v', "${consumerWorkspace}:/workspace",
+            '-w', '/workspace',
+            '-e', 'LVIE_REPO_ROOT=/workspace',
+            '-e', 'WORKSPACE_ROOT=/workspace',
+            '-e', 'REPO_ROOT=/workspace',
+            '-e', 'LVIE_PROJECT_RELATIVE_PATH=lv_icon_editor.lvproj',
+            '-e', 'PROJECT_PATH_REL=lv_icon_editor.lvproj',
+            '-e', 'LVIE_PROJECT_PATH=/workspace/lv_icon_editor.lvproj',
+            '-e', 'PROJECT_PATH=/workspace/lv_icon_editor.lvproj',
+            '-e', 'TARGET_DIR_REL=Test/Templates',
+            '-e', 'CONTAINER_PARITY_EXCLUDE_FILES=Polymorphic Template.vi',
+            '-e', 'CONTAINER_PARITY_BUILD_SPEC=true',
+            '-e', 'CONTAINER_PARITY_BUILD_SPEC_NAME=Editor Packed Library',
+            '-e', 'CONTAINER_PARITY_TARGET_NAME=My Computer',
+            '-e', "CONTAINER_PARITY_BUILD_OUTPUT_RELATIVE_PATH=$buildRelativePath",
+            '-e', "CONTAINER_PARITY_LABVIEW_VERSION=$env:LABVIEW_VERSION",
+            '-e', 'CONTAINER_PARITY_LABVIEW_BITNESS=32',
+            '-e', 'CONTAINER_PARITY_BITNESS=32',
+            '-e', 'LABVIEW_BITNESS=32',
+            '-e', 'LABVIEW_COMMUNITY_EDITION=true',
+            $env:LINUX_LABVIEW_IMAGE,
+            'bash',
+            '-lc',
+            $linuxContainerParityCommand
+          )
+          @(
+            'docker ' + ($dockerArgs -join ' ')
+          ) | Set-Content -LiteralPath (Join-Path $commandsDir 'build.txt') -Encoding UTF8
+
+          try {
+            & docker @dockerArgs 2>&1 | Tee-Object -FilePath $logPath -Append
+            $dockerExitCode = [int]$LASTEXITCODE
+            if ($dockerExitCode -ne 0) {
+              throw "Linux x86 PPL build command failed with exit code $dockerExitCode"
+            }
+
+            $builtPplPath = Join-Path $consumerWorkspace $buildRelativePath
+            if (-not (Test-Path -LiteralPath $builtPplPath -PathType Leaf)) {
+              throw "Linux x86 build output not found at '$builtPplPath'."
+            }
+
+            $targetPplPath = Join-Path $consumerWorkspace $targetRelativePath
+            $targetDirectory = Split-Path -Path $targetPplPath -Parent
+            if (-not [string]::IsNullOrWhiteSpace($targetDirectory) -and -not (Test-Path -LiteralPath $targetDirectory -PathType Container)) {
+              New-Item -Path $targetDirectory -ItemType Directory -Force | Out-Null
+            }
+            Copy-Item -LiteralPath $builtPplPath -Destination $targetPplPath -Force
+
+            & "$env:GITHUB_WORKSPACE/scripts/New-PplBundleManifest.ps1" `
+              -PplPath $targetPplPath `
+              -OutputDirectory $bundleDir `
+              -LabVIEWVersion $env:LABVIEW_VERSION `
+              -Bitness '32' `
+              -WindowsImage $env:LINUX_LABVIEW_IMAGE `
+              -BuildRunId "$env:GITHUB_RUN_ID" `
+              -BuildRunAttempt "$env:GITHUB_RUN_ATTEMPT"
+          } catch {
+            $status = 'failed'
+            $reason = $_.Exception.Message
+            $capturedError = $_
+          }
+
+          $completedUtc = (Get-Date).ToUniversalTime()
+          $durationSeconds = [int][math]::Max(0, ($completedUtc - $startedUtc).TotalSeconds)
+          $rawPplPath = Join-Path $consumerWorkspace $targetRelativePath
+
+          $rawArtifactSize = if (Test-Path -LiteralPath $rawPplPath -PathType Leaf) {
+            [int64](Get-Item -LiteralPath $rawPplPath).Length
+          } else {
+            $null
+          }
+          $bundleArtifactPath = Join-Path $bundleDir 'ppl-manifest.json'
+          $bundleArtifactSize = if (Test-Path -LiteralPath $bundleArtifactPath -PathType Leaf) {
+            [int64](Get-Item -LiteralPath $bundleArtifactPath).Length
+          } else {
+            $null
+          }
+
+          $resultPayload = [pscustomobject]@{
+            generated_utc = $completedUtc.ToString('o')
+            status = $status
+            reason = $reason
+            docker_run_exit_code = $dockerExitCode
+            output_path = $targetRelativePath
+            duration_seconds = $durationSeconds
+            bundle_directory = $bundleDir
+            diagnostics_directory = $diagnosticsDir
+          }
+          $resultPayload | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $resultPath -Encoding UTF8
+
+          $statusPayload = [pscustomobject]@{
+            status = $status
+            reason = $reason
+          }
+          $statusPayload | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $statusPath -Encoding UTF8
+
+          $metricsPayload = [pscustomobject]@{
+            schema_version = '1.0'
+            generated_utc = $completedUtc.ToString('o')
+            owner_repo = $env:GITHUB_REPOSITORY
+            workflow = $env:GITHUB_WORKFLOW
+            run_id = [int64]$env:GITHUB_RUN_ID
+            run_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            run_url = "https://github.com/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)"
+            head_sha = $env:GITHUB_SHA
+            expected_head_sha = $null
+            is_authoritative_latest_head = $null
+            status = 'completed'
+            conclusion = if ($status -eq 'success') { 'success' } else { 'failure' }
+            gate_outcome = if ($status -eq 'success') { 'go' } else { 'no-go' }
+            required_lanes_passed = ($status -eq 'success')
+            shadow_passed = ($status -eq 'success')
+            queue_seconds = $null
+            duration_seconds = $durationSeconds
+            lane_name = 'build-x86-ppl-linux-shadow'
+            lane_role = 'shadow'
+            ppl_target_os = 'linux'
+            ppl_bitness = '32'
+            container_image = $env:LINUX_LABVIEW_IMAGE
+            job_durations = @(
+              [pscustomobject]@{
+                name = 'build-linux-x86-container'
+                status = 'completed'
+                conclusion = if ($status -eq 'success') { 'success' } else { 'failure' }
+                duration_seconds = $durationSeconds
+              }
+            )
+            artifact_contract_hashes = @(
+              [pscustomobject]@{
+                name = "docker-contract-ppl-linux-raw-x86-$($env:GITHUB_RUN_ID)"
+                id = $null
+                size_in_bytes = $rawArtifactSize
+              }
+              [pscustomobject]@{
+                name = "docker-contract-ppl-bundle-linux-x86-$($env:GITHUB_RUN_ID)"
+                id = $null
+                size_in_bytes = $bundleArtifactSize
+              }
+            )
+          }
+          $metricsJson = $metricsPayload | ConvertTo-Json -Depth 10
+          $schemaPath = Join-Path $env:GITHUB_WORKSPACE 'schemas/control-plane-green-run.schema.json'
+          if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
+            throw "Control-plane green-run schema not found: $schemaPath"
+          }
+          $isValidMetricsPayload = $metricsJson | Test-Json -SchemaFile $schemaPath
+          if (-not $isValidMetricsPayload) {
+            throw "Linux x86 shadow metrics payload failed schema validation."
+          }
+          Set-Content -LiteralPath $metricsPath -Value $metricsJson -Encoding UTF8
+
+          if ($null -ne $capturedError) {
+            throw $capturedError
+          }
+
+      - name: Publish Linux x86 shadow summary
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP 'ppl-linux-x86-shadow'
+          $statusPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.status.json'
+          $resultPath = Join-Path $diagnosticsDir 'ppl-linux-x86-shadow.result.json'
+
+          $status = 'missing'
+          $reason = ''
+          $durationSeconds = ''
+          if (Test-Path -LiteralPath $statusPath -PathType Leaf) {
+            try {
+              $statusPayload = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+              $status = [string]$statusPayload.status
+              $reason = [string]$statusPayload.reason
+            } catch {
+              $status = 'invalid'
+              $reason = "Unable to parse status payload: $($_.Exception.Message)"
+            }
+          } else {
+            $reason = "Status payload not found at '$statusPath'."
+          }
+
+          if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+            try {
+              $resultPayload = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+              if ($null -ne $resultPayload.duration_seconds) {
+                $durationSeconds = [string]$resultPayload.duration_seconds
+              }
+            } catch {
+              if ([string]::IsNullOrWhiteSpace($reason)) {
+                $reason = "Unable to parse result payload: $($_.Exception.Message)"
+              }
+            }
+          }
+
+          $durationDisplay = if ([string]::IsNullOrWhiteSpace($durationSeconds)) { 'n/a' } else { $durationSeconds }
+          $reasonDisplay = if ([string]::IsNullOrWhiteSpace($reason)) { 'n/a' } else { $reason }
+
+          @(
+            '## Linux x86 container PPL shadow lane'
+            ''
+            "- Status: $status"
+            "- Duration seconds: $durationDisplay"
+            "- Reason: $reasonDisplay"
+            "- Raw artifact: docker-contract-ppl-linux-raw-x86-$env:GITHUB_RUN_ID"
+            "- Bundle artifact: docker-contract-ppl-bundle-linux-x86-$env:GITHUB_RUN_ID"
+            "- Diagnostics artifact: docker-contract-ppl-linux-x86-shadow-diagnostics-$env:GITHUB_RUN_ID"
+          ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload Linux raw x86 PPL artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-linux-raw-x86-${{ github.run_id }}
+          path: ${{ github.workspace }}/consumer/resource/plugins/lv_icon_x86.lvlibp
+          if-no-files-found: error
+
+      - name: Upload Linux x86 PPL bundle artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-bundle-linux-x86-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-bundle-linux-x86
+          if-no-files-found: error
+
+      - name: Upload Linux x86 shadow diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-linux-x86-shadow-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-linux-x86-shadow
+          if-no-files-found: error
+
   gather-release-notes:
     runs-on: ubuntu-latest
     needs: [docker-ci, resolve-source-target]

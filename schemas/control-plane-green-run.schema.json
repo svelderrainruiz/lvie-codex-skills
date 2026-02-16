@@ -35,6 +35,11 @@
     "shadow_passed": { "type": ["boolean", "null"] },
     "queue_seconds": { "type": ["integer", "null"], "minimum": 0 },
     "duration_seconds": { "type": ["integer", "null"], "minimum": 0 },
+    "lane_name": { "type": ["string", "null"] },
+    "lane_role": { "type": ["string", "null"], "enum": ["required", "shadow", null] },
+    "ppl_target_os": { "type": ["string", "null"], "enum": ["windows", "linux", null] },
+    "ppl_bitness": { "type": ["string", "null"], "enum": ["32", "64", null] },
+    "container_image": { "type": ["string", "null"] },
     "job_durations": {
       "type": "array",
       "items": {

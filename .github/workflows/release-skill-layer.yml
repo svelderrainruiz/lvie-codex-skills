@@ -402,6 +402,7 @@ jobs:
           path: ${{ runner.temp }}/release-assets/ppl-container-windows-x64
 
       - name: Download Windows container x86 shadow PPL bundle artifact
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: docker-contract-ppl-container-windows-x86-shadow-${{ github.run_id }}
@@ -414,6 +415,7 @@ jobs:
           path: ${{ runner.temp }}/release-assets/ppl-container-linux-x64
 
       - name: Download Linux container x86 shadow PPL bundle artifact
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: docker-contract-ppl-container-linux-x86-shadow-${{ github.run_id }}
@@ -426,6 +428,7 @@ jobs:
           path: ${{ runner.temp }}/release-assets/ppl-selfhosted-windows-x86
 
       - name: Download self-hosted windows x64 shadow PPL bundle artifact
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: docker-contract-ppl-selfhosted-windows-x64-shadow-${{ github.run_id }}
@@ -466,11 +469,8 @@ jobs:
           foreach ($requiredDir in @(
               $installerDir,
               $windowsContainerX64BundleDir,
-              $windowsContainerX86ShadowBundleDir,
               $linuxContainerX64BundleDir,
-              $linuxContainerX86ShadowBundleDir,
               $selfHostedWindowsX86BundleDir,
-              $selfHostedWindowsX64ShadowBundleDir,
               $vipPackageDir
             )) {
             if (-not (Test-Path -LiteralPath $requiredDir -PathType Container)) {
@@ -498,32 +498,87 @@ jobs:
           if (Test-Path -LiteralPath $linuxContainerX64ZipPath -PathType Leaf) { Remove-Item -LiteralPath $linuxContainerX64ZipPath -Force }
           Compress-Archive -Path (Join-Path $linuxContainerX64BundleDir '*') -DestinationPath $linuxContainerX64ZipPath
 
-          $linuxContainerX86ShadowZipPath = Join-Path $stageDir 'lvie-ppl-container-linux-x86-shadow.zip'
-          if (Test-Path -LiteralPath $linuxContainerX86ShadowZipPath -PathType Leaf) { Remove-Item -LiteralPath $linuxContainerX86ShadowZipPath -Force }
-          Compress-Archive -Path (Join-Path $linuxContainerX86ShadowBundleDir '*') -DestinationPath $linuxContainerX86ShadowZipPath
-
           $selfHostedWindowsX86ZipPath = Join-Path $stageDir 'lvie-ppl-selfhosted-windows-x86.zip'
           if (Test-Path -LiteralPath $selfHostedWindowsX86ZipPath -PathType Leaf) { Remove-Item -LiteralPath $selfHostedWindowsX86ZipPath -Force }
           Compress-Archive -Path (Join-Path $selfHostedWindowsX86BundleDir '*') -DestinationPath $selfHostedWindowsX86ZipPath
-
-          $selfHostedWindowsX64ShadowZipPath = Join-Path $stageDir 'lvie-ppl-selfhosted-windows-x64-shadow.zip'
-          if (Test-Path -LiteralPath $selfHostedWindowsX64ShadowZipPath -PathType Leaf) { Remove-Item -LiteralPath $selfHostedWindowsX64ShadowZipPath -Force }
-          Compress-Archive -Path (Join-Path $selfHostedWindowsX64ShadowBundleDir '*') -DestinationPath $selfHostedWindowsX64ShadowZipPath
 
           $vipZipPath = Join-Path $stageDir 'lvie-vip-package-self-hosted.zip'
           if (Test-Path -LiteralPath $vipZipPath -PathType Leaf) { Remove-Item -LiteralPath $vipZipPath -Force }
           Compress-Archive -Path (Join-Path $vipPackageDir '*') -DestinationPath $vipZipPath
 
+          $optionalShadowBundles = @(
+            [pscustomobject]@{
+              lane_id = 'build-ppl-container-windows-x86-shadow'
+              source_dir = $windowsContainerX86ShadowBundleDir
+              zip_path = (Join-Path $stageDir 'lvie-ppl-container-windows-x86-shadow.zip')
+              asset_name = 'lvie-ppl-container-windows-x86-shadow.zip'
+            },
+            [pscustomobject]@{
+              lane_id = 'build-ppl-container-linux-x86-shadow'
+              source_dir = $linuxContainerX86ShadowBundleDir
+              zip_path = (Join-Path $stageDir 'lvie-ppl-container-linux-x86-shadow.zip')
+              asset_name = 'lvie-ppl-container-linux-x86-shadow.zip'
+            },
+            [pscustomobject]@{
+              lane_id = 'build-ppl-selfhosted-windows-x64-shadow'
+              source_dir = $selfHostedWindowsX64ShadowBundleDir
+              zip_path = (Join-Path $stageDir 'lvie-ppl-selfhosted-windows-x64-shadow.zip')
+              asset_name = 'lvie-ppl-selfhosted-windows-x64-shadow.zip'
+            }
+          )
+
+          $optionalShadowAssetFiles = @()
+          $optionalShadowAssetStatus = @()
+          foreach ($bundle in $optionalShadowBundles) {
+            $sourceDir = [string]$bundle.source_dir
+            $zipPath = [string]$bundle.zip_path
+            $assetName = [string]$bundle.asset_name
+            $laneId = [string]$bundle.lane_id
+
+            if (-not (Test-Path -LiteralPath $sourceDir -PathType Container)) {
+              Write-Warning "Optional shadow release asset source is missing for lane '$laneId': $sourceDir"
+              $optionalShadowAssetStatus += [pscustomobject]@{
+                lane_id = $laneId
+                asset_name = $assetName
+                status = 'skipped'
+                reason = 'artifact_missing'
+              }
+              continue
+            }
+
+            $sourceFiles = @(Get-ChildItem -LiteralPath $sourceDir -File -Recurse -ErrorAction SilentlyContinue)
+            if ($sourceFiles.Count -eq 0) {
+              Write-Warning "Optional shadow release asset source has no files for lane '$laneId': $sourceDir"
+              $optionalShadowAssetStatus += [pscustomobject]@{
+                lane_id = $laneId
+                asset_name = $assetName
+                status = 'skipped'
+                reason = 'artifact_empty'
+              }
+              continue
+            }
+
+            if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
+              Remove-Item -LiteralPath $zipPath -Force
+            }
+            Compress-Archive -Path (Join-Path $sourceDir '*') -DestinationPath $zipPath
+
+            $optionalShadowAssetFiles += Get-Item -LiteralPath $zipPath
+            $optionalShadowAssetStatus += [pscustomobject]@{
+              lane_id = $laneId
+              asset_name = $assetName
+              status = 'included'
+              reason = 'artifact_present'
+            }
+          }
+
           $assetFiles = @(
             Get-Item -LiteralPath $stagedInstallerPath
             Get-Item -LiteralPath $windowsContainerX64ZipPath
-            Get-Item -LiteralPath $windowsContainerX86ShadowZipPath
             Get-Item -LiteralPath $linuxContainerX64ZipPath
-            Get-Item -LiteralPath $linuxContainerX86ShadowZipPath
             Get-Item -LiteralPath $selfHostedWindowsX86ZipPath
-            Get-Item -LiteralPath $selfHostedWindowsX64ShadowZipPath
             Get-Item -LiteralPath $vipZipPath
-          )
+          ) + $optionalShadowAssetFiles
 
           $assetRecords = foreach ($asset in $assetFiles) {
             [pscustomobject]@{
@@ -590,21 +645,61 @@ jobs:
           $provenanceSha = (Get-FileHash -LiteralPath $provenancePath -Algorithm SHA256).Hash.ToLowerInvariant()
           $payloadManifestSha = (Get-FileHash -LiteralPath $payloadManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
 
+          function Get-AssetSha {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$AssetName
+            )
+
+            $assetMatch = @($assetRecords | Where-Object { $_.name -eq $AssetName } | Select-Object -First 1)
+            if ($assetMatch.Count -eq 0) {
+              return '<not-included>'
+            }
+
+            return [string]$assetMatch[0].sha256
+          }
+
+          $optionalShadowNoteLines = @(
+            foreach ($statusRecord in $optionalShadowAssetStatus) {
+              $assetName = [string]$statusRecord.asset_name
+              $status = [string]$statusRecord.status
+              if ([string]::Equals($status, 'included', [System.StringComparison]::Ordinal)) {
+                "- $assetName (SHA256: $(Get-AssetSha -AssetName $assetName))"
+              } else {
+                "- $assetName (not included: $([string]$statusRecord.reason))"
+              }
+            }
+          )
+
+          $optionalShadowSummaryLines = @(
+            '## Optional shadow release assets',
+            '',
+            '- Behavior: missing shadow lane artifacts do not block release publishing.'
+          )
+          $optionalShadowSummaryLines += @(
+            foreach ($statusRecord in $optionalShadowAssetStatus) {
+              "- $([string]$statusRecord.lane_id): $([string]$statusRecord.status) ($([string]$statusRecord.reason))"
+            }
+          )
+          ($optionalShadowSummaryLines -join [Environment]::NewLine) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
           $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          $notes = @(
+          $notesLines = @(
             'Layered Codex skill asset for labview-icon-editor.',
             '',
             'Release assets:',
-            "- lvie-codex-skill-layer-installer.exe (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-codex-skill-layer-installer.exe' } | Select-Object -ExpandProperty sha256))",
-            "- lvie-ppl-container-windows-x64.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-container-windows-x64.zip' } | Select-Object -ExpandProperty sha256))",
-            "- lvie-ppl-container-windows-x86-shadow.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-container-windows-x86-shadow.zip' } | Select-Object -ExpandProperty sha256))",
-            "- lvie-ppl-container-linux-x64.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-container-linux-x64.zip' } | Select-Object -ExpandProperty sha256))",
-            "- lvie-ppl-container-linux-x86-shadow.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-container-linux-x86-shadow.zip' } | Select-Object -ExpandProperty sha256))",
-            "- lvie-ppl-selfhosted-windows-x86.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-selfhosted-windows-x86.zip' } | Select-Object -ExpandProperty sha256))",
-            "- lvie-ppl-selfhosted-windows-x64-shadow.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-ppl-selfhosted-windows-x64-shadow.zip' } | Select-Object -ExpandProperty sha256))",
-            "- lvie-vip-package-self-hosted.zip (SHA256: $($assetRecords | Where-Object { $_.name -eq 'lvie-vip-package-self-hosted.zip' } | Select-Object -ExpandProperty sha256))",
+            "- lvie-codex-skill-layer-installer.exe (SHA256: $(Get-AssetSha -AssetName 'lvie-codex-skill-layer-installer.exe'))",
+            "- lvie-ppl-container-windows-x64.zip (SHA256: $(Get-AssetSha -AssetName 'lvie-ppl-container-windows-x64.zip'))",
+            "- lvie-ppl-container-linux-x64.zip (SHA256: $(Get-AssetSha -AssetName 'lvie-ppl-container-linux-x64.zip'))",
+            "- lvie-ppl-selfhosted-windows-x86.zip (SHA256: $(Get-AssetSha -AssetName 'lvie-ppl-selfhosted-windows-x86.zip'))",
+            "- lvie-vip-package-self-hosted.zip (SHA256: $(Get-AssetSha -AssetName 'lvie-vip-package-self-hosted.zip'))",
             "- release-provenance.json (SHA256: $provenanceSha)",
             "- release-payload-manifest.json (SHA256: $payloadManifestSha)",
+            '',
+            'Optional shadow lane assets:'
+          )
+          $notesLines += $optionalShadowNoteLines
+          $notesLines += @(
             '',
             'CI provenance:',
             '- skills_ci_repo: ${{ github.repository }}',
@@ -618,7 +713,8 @@ jobs:
             '- nsis_root: ${{ needs.package.outputs.nsis_root }}',
             '- run_self_hosted: ${{ needs.resolve-release-context.outputs.run_self_hosted }} (deprecated)',
             '- run_build_spec: ${{ needs.resolve-release-context.outputs.run_build_spec }} (deprecated)'
-          ) -join [Environment]::NewLine
+          )
+          $notes = $notesLines -join [Environment]::NewLine
           Set-Content -LiteralPath $notesPath -Value $notes -Encoding UTF8
 
           "stage_dir=$stageDir" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

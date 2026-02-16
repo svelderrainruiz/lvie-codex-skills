@@ -30,12 +30,22 @@ Describe 'Release payload manifest contract' {
         }
         $script:laneMatrix = $script:laneMatrixJson | ConvertFrom-Json -ErrorAction Stop
 
-        $script:laneReleaseAssets = @(
+        $script:requiredLaneReleaseAssets = @(
             foreach ($lane in @($script:laneMatrix.lanes)) {
                 if ($null -eq $lane) {
                     continue
                 }
                 if ($null -eq $lane.include_in_release_payload -or -not [bool]$lane.include_in_release_payload) {
+                    continue
+                }
+                $laneIsRequired = $false
+                if ($null -ne $lane.required) {
+                    $laneIsRequired = [bool]$lane.required
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace([string]$lane.role)) {
+                    $laneIsRequired = [string]::Equals([string]$lane.role, 'required', [System.StringComparison]::OrdinalIgnoreCase)
+                }
+                if (-not $laneIsRequired) {
                     continue
                 }
 
@@ -45,14 +55,43 @@ Describe 'Release payload manifest contract' {
                 }
             }
         )
-        $script:staticReleaseAssets = @(
+        $script:optionalLaneReleaseAssets = @(
+            foreach ($lane in @($script:laneMatrix.lanes)) {
+                if ($null -eq $lane) {
+                    continue
+                }
+                if ($null -eq $lane.include_in_release_payload -or -not [bool]$lane.include_in_release_payload) {
+                    continue
+                }
+                $laneIsRequired = $false
+                if ($null -ne $lane.required) {
+                    $laneIsRequired = [bool]$lane.required
+                }
+                elseif (-not [string]::IsNullOrWhiteSpace([string]$lane.role)) {
+                    $laneIsRequired = [string]::Equals([string]$lane.role, 'required', [System.StringComparison]::OrdinalIgnoreCase)
+                }
+                if ($laneIsRequired) {
+                    continue
+                }
+
+                [pscustomobject]@{
+                    name = [string]$lane.release_asset_name
+                    category = [string]$lane.release_asset_category
+                }
+            }
+        )
+        $script:staticRequiredReleaseAssets = @(
             [pscustomobject]@{ name = 'lvie-codex-skill-layer-installer.exe'; category = 'installer' },
             [pscustomobject]@{ name = 'lvie-vip-package-self-hosted.zip'; category = 'vip_package_self_hosted' },
             [pscustomobject]@{ name = 'release-provenance.json'; category = 'provenance' }
         )
-        $script:expectedAssets = @($script:laneReleaseAssets + $script:staticReleaseAssets)
-        $script:expectedAssetNames = @($script:expectedAssets.name | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
-        $script:expectedCategories = @($script:expectedAssets.category | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        $script:requiredExpectedAssets = @($script:requiredLaneReleaseAssets + $script:staticRequiredReleaseAssets)
+        $script:requiredExpectedAssetNames = @($script:requiredExpectedAssets.name | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        $script:requiredExpectedCategories = @($script:requiredExpectedAssets.category | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        $script:optionalExpectedAssetNames = @($script:optionalLaneReleaseAssets.name | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        $script:optionalExpectedCategories = @($script:optionalLaneReleaseAssets.category | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+        $script:allExpectedAssetNames = @($script:requiredExpectedAssetNames + $script:optionalExpectedAssetNames | Select-Object -Unique)
+        $script:allExpectedCategories = @($script:requiredExpectedCategories + $script:optionalExpectedCategories | Select-Object -Unique)
     }
 
     It 'defines required top-level fields and category enum in schema' {
@@ -65,7 +104,7 @@ Describe 'Release payload manifest contract' {
         [bool]$script:schema.additionalProperties | Should -BeFalse
 
         $categories = @($script:schema.properties.assets.items.properties.category.enum)
-        foreach ($category in $script:expectedCategories) {
+        foreach ($category in $script:allExpectedCategories) {
             $categories | Should -Contain $category
         }
     }
@@ -74,7 +113,7 @@ Describe 'Release payload manifest contract' {
         $tempRoot = Join-Path $env:TEMP ("release-payload-manifest-{0}" -f [guid]::NewGuid().ToString('N'))
         New-Item -Path $tempRoot -ItemType Directory -Force | Out-Null
         try {
-            foreach ($name in $script:expectedAssetNames) {
+            foreach ($name in $script:allExpectedAssetNames) {
                 $path = Join-Path $tempRoot $name
                 Set-Content -LiteralPath $path -Value "fixture-$name" -Encoding UTF8
             }
@@ -99,11 +138,11 @@ Describe 'Release payload manifest contract' {
             $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
             [string]$manifest.schema_version | Should -Be '1.0'
             [string]$manifest.release_tag | Should -Be 'v0.1.0'
-            @($manifest.assets).Count | Should -Be $script:expectedAssetNames.Count
-            foreach ($category in $script:expectedCategories) {
+            @($manifest.assets).Count | Should -Be $script:allExpectedAssetNames.Count
+            foreach ($category in $script:allExpectedCategories) {
                 @($manifest.assets.category) | Should -Contain $category
             }
-            foreach ($name in $script:expectedAssetNames) {
+            foreach ($name in $script:allExpectedAssetNames) {
                 @($manifest.assets.name) | Should -Contain $name
             }
             foreach ($asset in @($manifest.assets)) {
@@ -122,8 +161,8 @@ Describe 'Release payload manifest contract' {
         $tempRoot = Join-Path $env:TEMP ("release-payload-missing-{0}" -f [guid]::NewGuid().ToString('N'))
         New-Item -Path $tempRoot -ItemType Directory -Force | Out-Null
         try {
-            $missingName = $script:laneReleaseAssets[0].name
-            foreach ($name in $script:expectedAssetNames) {
+            $missingName = [string]$script:requiredLaneReleaseAssets[0].name
+            foreach ($name in $script:allExpectedAssetNames) {
                 if ($name -eq $missingName) {
                     continue
                 }
@@ -155,6 +194,48 @@ Describe 'Release payload manifest contract' {
             $failed | Should -BeTrue
             $errorMessage | Should -Match 'Required staged release asset missing'
             $errorMessage | Should -Match ([regex]::Escape($missingName))
+        }
+        finally {
+            if (Test-Path -LiteralPath $tempRoot -PathType Container) {
+                Remove-Item -LiteralPath $tempRoot -Recurse -Force
+            }
+        }
+    }
+
+    It 'allows missing optional shadow lane assets while keeping required assets schema-valid' {
+        $tempRoot = Join-Path $env:TEMP ("release-payload-optional-{0}" -f [guid]::NewGuid().ToString('N'))
+        New-Item -Path $tempRoot -ItemType Directory -Force | Out-Null
+        try {
+            foreach ($name in $script:requiredExpectedAssetNames) {
+                $path = Join-Path $tempRoot $name
+                Set-Content -LiteralPath $path -Value "fixture-$name" -Encoding UTF8
+            }
+
+            & $script:generatorPath `
+                -ReleaseTag 'v0.1.0' `
+                -StageDirectory $tempRoot `
+                -SourceProjectRepo 'svelderrainruiz/labview-icon-editor' `
+                -SourceProjectRef 'main' `
+                -SourceProjectSha '1234567890abcdef1234567890abcdef12345678' `
+                -CiRepository 'svelderrainruiz/lvie-codex-skills' `
+                -CiRunId '100' `
+                -CiRunAttempt '1' `
+                -CiRunUrl 'https://github.com/svelderrainruiz/lvie-codex-skills/actions/runs/100' `
+                -OutputPath (Join-Path $tempRoot 'release-payload-manifest.json') `
+                -LaneMatrixPath $script:laneMatrixPath `
+                -SchemaPath $script:schemaPath
+
+            $manifestPath = Join-Path $tempRoot 'release-payload-manifest.json'
+            Test-Path -LiteralPath $manifestPath -PathType Leaf | Should -BeTrue
+
+            $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
+            @($manifest.assets).Count | Should -Be $script:requiredExpectedAssetNames.Count
+            foreach ($name in $script:requiredExpectedAssetNames) {
+                @($manifest.assets.name) | Should -Contain $name
+            }
+            foreach ($name in $script:optionalExpectedAssetNames) {
+                @($manifest.assets.name) | Should -Not -Contain $name
+            }
         }
         finally {
             if (Test-Path -LiteralPath $tempRoot -PathType Container) {

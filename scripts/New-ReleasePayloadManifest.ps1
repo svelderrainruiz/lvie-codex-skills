@@ -99,7 +99,8 @@ if (-not $laneMatrixIsValid) {
 }
 
 $laneMatrix = $laneMatrixJson | ConvertFrom-Json -ErrorAction Stop
-$laneAssets = @()
+$requiredLaneAssets = @()
+$optionalLaneAssets = @()
 foreach ($lane in @($laneMatrix.lanes)) {
     if ($null -eq $lane) {
         continue
@@ -122,16 +123,31 @@ foreach ($lane in @($laneMatrix.lanes)) {
         throw "Lane '$($lane.lane_id)' has include_in_release_payload=true but release_asset_category is empty."
     }
 
-    $laneAssets += @{
+    $laneAsset = @{
         name = $releaseAssetName.Trim()
         category = $releaseAssetCategory.Trim()
+    }
+
+    $laneIsRequired = $false
+    if ($null -ne $lane.required) {
+        $laneIsRequired = [bool]$lane.required
+    }
+    elseif ([string]::Equals([string]$lane.role, 'required', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $laneIsRequired = $true
+    }
+
+    if ($laneIsRequired) {
+        $requiredLaneAssets += $laneAsset
+    }
+    else {
+        $optionalLaneAssets += $laneAsset
     }
 }
 
 $requiredAssets = @(
     @{ name = 'lvie-codex-skill-layer-installer.exe'; category = 'installer' }
 )
-$requiredAssets += $laneAssets
+$requiredAssets += $requiredLaneAssets
 $requiredAssets += @(
     @{ name = 'lvie-vip-package-self-hosted.zip'; category = 'vip_package_self_hosted' },
     @{ name = 'release-provenance.json'; category = 'provenance' }
@@ -150,6 +166,24 @@ foreach ($requiredAsset in $requiredAssets) {
 }
 $requiredAssets = @($dedupedRequiredAssets.Values)
 
+$dedupedOptionalAssets = @{}
+foreach ($optionalAsset in $optionalLaneAssets) {
+    $assetName = [string]$optionalAsset.name
+    if ([string]::IsNullOrWhiteSpace($assetName)) {
+        throw "Optional asset contract contains an empty asset name."
+    }
+
+    if ($dedupedRequiredAssets.ContainsKey($assetName)) {
+        continue
+    }
+
+    $dedupedOptionalAssets[$assetName] = @{
+        name = $assetName
+        category = [string]$optionalAsset.category
+    }
+}
+$optionalAssets = @($dedupedOptionalAssets.Values)
+
 $assetRecords = @()
 foreach ($requiredAsset in $requiredAssets) {
     $assetPath = Join-Path -Path $resolvedStageDirectory -ChildPath $requiredAsset.name
@@ -164,6 +198,22 @@ foreach ($requiredAsset in $requiredAssets) {
         sha256 = $assetHash
         size_bytes = [int64]$assetItem.Length
         category = $requiredAsset.category
+    }
+}
+
+foreach ($optionalAsset in $optionalAssets) {
+    $assetPath = Join-Path -Path $resolvedStageDirectory -ChildPath $optionalAsset.name
+    if (-not (Test-Path -LiteralPath $assetPath -PathType Leaf)) {
+        continue
+    }
+
+    $assetItem = Get-Item -LiteralPath $assetPath
+    $assetHash = (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $assetRecords += [pscustomobject]@{
+        name = $optionalAsset.name
+        sha256 = $assetHash
+        size_bytes = [int64]$assetItem.Length
+        category = $optionalAsset.category
     }
 }
 

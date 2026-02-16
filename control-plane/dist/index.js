@@ -12,8 +12,9 @@ const BAD_JOB_CONCLUSIONS = new Set([
 ]);
 
 const REQUIRED_ARTIFACT_PREFIXES = [
-  'docker-contract-ppl-bundle-windows-x64-',
-  'docker-contract-ppl-bundle-linux-x64-',
+  'docker-contract-ppl-container-windows-x64-',
+  'docker-contract-ppl-container-linux-x64-',
+  'docker-contract-ppl-selfhosted-windows-x86-',
   'docker-contract-vip-package-self-hosted-'
 ];
 const DEFAULT_SHADOW_PROMOTION_MIN_GREENS = 5;

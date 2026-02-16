@@ -15,24 +15,31 @@ From skills repo CI run metadata:
 - source project SHA pin
 
 ## Required artifacts
-- docker-contract-ppl-bundle-windows-x64-<run_id>
-- docker-contract-ppl-bundle-linux-x64-<run_id>
+- docker-contract-ppl-container-windows-x64-<run_id>
+- docker-contract-ppl-container-linux-x64-<run_id>
+- docker-contract-ppl-selfhosted-windows-x86-<run_id>
 - docker-contract-vip-package-self-hosted-<run_id>
 - codex-skill-layer
 
 ## Advisory artifacts (non-gating)
 - docker-contract-pylavi-source-project-<run_id> (diagnostic source-project pylavi validation)
 - docker-contract-runner-cli-linux-x64-<run_id> (diagnostic runner-cli Linux Docker build/test/publish)
-- docker-contract-ppl-linux-raw-x86-<run_id> (Linux x86 shadow raw PPL artifact)
-- docker-contract-ppl-bundle-linux-x86-<run_id> (Linux x86 shadow PPL bundle artifact)
-- docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id> (Linux x86 shadow lane status/result/log/metrics)
+- docker-contract-ppl-container-windows-x86-shadow-<run_id> (Windows container x86 shadow PPL bundle artifact)
+- docker-contract-ppl-container-linux-x86-shadow-<run_id> (Linux container x86 shadow PPL bundle artifact)
+- docker-contract-ppl-selfhosted-windows-x64-shadow-<run_id> (Self-hosted Windows x64 shadow PPL bundle artifact)
+- docker-contract-ppl-container-windows-x86-shadow-diagnostics-<run_id> (Windows container x86 shadow status/result/log/metrics)
+- docker-contract-ppl-container-linux-x86-shadow-diagnostics-<run_id> (Linux container x86 shadow status/result/log/metrics)
+- docker-contract-ppl-selfhosted-windows-x64-shadow-diagnostics-<run_id> (Self-hosted Windows x64 shadow status/result/log/metrics)
 
 ## Release payload contract
 Release publish must include these files:
 - lvie-codex-skill-layer-installer.exe
-- lvie-ppl-bundle-windows-x64.zip
-- lvie-ppl-bundle-linux-x64.zip
-- lvie-ppl-bundle-linux-x86.zip
+- lvie-ppl-container-windows-x64.zip
+- lvie-ppl-container-windows-x86-shadow.zip
+- lvie-ppl-container-linux-x64.zip
+- lvie-ppl-container-linux-x86-shadow.zip
+- lvie-ppl-selfhosted-windows-x86.zip
+- lvie-ppl-selfhosted-windows-x64-shadow.zip
 - lvie-vip-package-self-hosted.zip
 - release-provenance.json
 - release-payload-manifest.json
@@ -152,7 +159,7 @@ gh api repos/<owner>/lvie-codex-skills/actions/runs/<RUN_ID>/artifacts --jq '.ar
 ```
 
 ## Decision examples
-- NO-GO example: CI gate fails in `build-x64-ppl-linux` and required artifacts are missing.
+- NO-GO example: CI gate fails in `build-ppl-container-linux-x64` and required artifacts are missing.
 - GO example: `ci-gate` and `package` succeed and all required artifacts are present for publish.
 
 

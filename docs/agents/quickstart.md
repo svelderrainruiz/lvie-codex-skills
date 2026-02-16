@@ -39,8 +39,9 @@ A release candidate run is GO-eligible only if all are true:
 - conclusion = success
 - no required job has failure/cancelled/timed_out/startup_failure/action_required
 - required artifacts exist:
-  - `docker-contract-ppl-bundle-windows-x64-<run_id>`
-  - `docker-contract-ppl-bundle-linux-x64-<run_id>`
+  - `docker-contract-ppl-container-windows-x64-<run_id>`
+  - `docker-contract-ppl-container-linux-x64-<run_id>`
+  - `docker-contract-ppl-selfhosted-windows-x86-<run_id>`
   - `docker-contract-vip-package-self-hosted-<run_id>`
 
 If any condition fails: NO-GO (no release publish).
@@ -48,7 +49,9 @@ If any condition fails: NO-GO (no release publish).
 Non-gating diagnostic lanes in `ci.yml` (advisory, not GO/NO-GO blockers):
 - `validate-pylavi-docker-source-project` (artifact `docker-contract-pylavi-source-project-<run_id>`)
 - `build-runner-cli-linux-docker` (artifact `docker-contract-runner-cli-linux-x64-<run_id>`)
-- `build-x86-ppl-linux-shadow` (artifacts `docker-contract-ppl-linux-raw-x86-<run_id>`, `docker-contract-ppl-bundle-linux-x86-<run_id>`, `docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id>`)
+- `build-ppl-container-windows-x86-shadow` (artifacts `docker-contract-ppl-container-windows-x86-shadow-<run_id>`, `docker-contract-ppl-container-windows-x86-shadow-diagnostics-<run_id>`)
+- `build-ppl-container-linux-x86-shadow` (artifacts `docker-contract-ppl-container-linux-x86-shadow-<run_id>`, `docker-contract-ppl-container-linux-x86-shadow-diagnostics-<run_id>`)
+- `build-ppl-selfhosted-windows` x64 shadow leg (artifacts `docker-contract-ppl-selfhosted-windows-x64-shadow-<run_id>`, `docker-contract-ppl-selfhosted-windows-x64-shadow-diagnostics-<run_id>`)
 
 ## 4) Dispatch source of truth
 Use skills repo release workflow inputs in `.github/workflows/release-skill-layer.yml`:
@@ -159,9 +162,12 @@ Get-ExecutionPolicy -List
 ## 8) Release payload files
 When `release-skill-layer` publishes a tag, expect:
 - `lvie-codex-skill-layer-installer.exe`
-- `lvie-ppl-bundle-windows-x64.zip`
-- `lvie-ppl-bundle-linux-x64.zip`
-- `lvie-ppl-bundle-linux-x86.zip`
+- `lvie-ppl-container-windows-x64.zip`
+- `lvie-ppl-container-windows-x86-shadow.zip`
+- `lvie-ppl-container-linux-x64.zip`
+- `lvie-ppl-container-linux-x86-shadow.zip`
+- `lvie-ppl-selfhosted-windows-x86.zip`
+- `lvie-ppl-selfhosted-windows-x64-shadow.zip`
 - `lvie-vip-package-self-hosted.zip`
 - `release-provenance.json`
 - `release-payload-manifest.json`

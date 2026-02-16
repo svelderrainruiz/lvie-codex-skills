@@ -47,8 +47,9 @@ Describe 'Agent docs contract' {
         $content = [string]$script:docs['release-gates.md']
 
         foreach ($artifact in @(
-            'docker-contract-ppl-bundle-windows-x64-<run_id>',
-            'docker-contract-ppl-bundle-linux-x64-<run_id>',
+            'docker-contract-ppl-container-windows-x64-<run_id>',
+            'docker-contract-ppl-container-linux-x64-<run_id>',
+            'docker-contract-ppl-selfhosted-windows-x86-<run_id>',
             'docker-contract-vip-package-self-hosted-<run_id>',
             'codex-skill-layer',
             'release-payload-manifest.json'
@@ -108,9 +109,11 @@ Describe 'Agent docs contract' {
         $releaseGates | Should -Match 'Advisory artifacts \(non-gating\)'
         $releaseGates | Should -Match 'docker-contract-pylavi-source-project-<run_id>'
         $releaseGates | Should -Match 'docker-contract-runner-cli-linux-x64-<run_id>'
-        $releaseGates | Should -Match 'docker-contract-ppl-bundle-linux-x86-<run_id>'
-        $quickstart | Should -Match 'docker-contract-ppl-bundle-linux-x86-<run_id>'
-        $quickstart | Should -Match 'build-x86-ppl-linux-shadow'
+        $releaseGates | Should -Match 'docker-contract-ppl-container-linux-x86-shadow-<run_id>'
+        $quickstart | Should -Match 'docker-contract-ppl-container-linux-x86-shadow-<run_id>'
+        $quickstart | Should -Match 'build-ppl-container-linux-x86-shadow'
+        $quickstart | Should -Match 'build-ppl-container-windows-x86-shadow'
+        $quickstart | Should -Match 'build-ppl-selfhosted-windows'
         $releaseGates | Should -Match 'validate-pylavi-docker-source-project'
         $releaseGates | Should -Match 'docker-contract-pylavi-source-project-<run_id>'
         $quickstart | Should -Match 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force'
@@ -137,7 +140,9 @@ Describe 'Agent docs contract' {
         $quickstart | Should -Match 'tag_exists'
         $quickstart | Should -Match 'workflow_dispatch'
         $quickstart | Should -Match 'Initialize-ForkPortability\.ps1'
-        $quickstart | Should -Match 'lvie-ppl-bundle-linux-x86\.zip'
+        $quickstart | Should -Match 'lvie-ppl-container-linux-x86-shadow\.zip'
+        $quickstart | Should -Match 'lvie-ppl-container-windows-x86-shadow\.zip'
+        $quickstart | Should -Match 'lvie-ppl-selfhosted-windows-x86\.zip'
         $quickstart | Should -Match 'LVIE_SOURCE_PROJECT_SHA'
         $quickstart | Should -Match '<owner>/lvie-codex-skills'
 
@@ -148,12 +153,16 @@ Describe 'Agent docs contract' {
         $releaseGates | Should -Match 'Initialize-ForkPortability\.ps1'
         $releaseGates | Should -Match 'tag_exists'
         $releaseGates | Should -Match 'manual dispatch'
-        $releaseGates | Should -Match 'lvie-ppl-bundle-linux-x86\.zip'
+        $releaseGates | Should -Match 'lvie-ppl-container-linux-x86-shadow\.zip'
+        $releaseGates | Should -Match 'lvie-ppl-container-windows-x86-shadow\.zip'
+        $releaseGates | Should -Match 'lvie-ppl-selfhosted-windows-x86\.zip'
 
-        $ciCatalog | Should -Match 'docker-contract-ppl-bundle-windows-x64-<run_id>'
-        $ciCatalog | Should -Match 'docker-contract-ppl-bundle-linux-x64-<run_id>'
-        $ciCatalog | Should -Match 'docker-contract-ppl-bundle-linux-x86-<run_id>'
-        $ciCatalog | Should -Match 'lvie-ppl-bundle-linux-x86\.zip'
+        $ciCatalog | Should -Match 'docker-contract-ppl-container-windows-x64-<run_id>'
+        $ciCatalog | Should -Match 'docker-contract-ppl-container-linux-x64-<run_id>'
+        $ciCatalog | Should -Match 'docker-contract-ppl-container-linux-x86-shadow-<run_id>'
+        $ciCatalog | Should -Match 'docker-contract-ppl-selfhosted-windows-x86-<run_id>'
+        $ciCatalog | Should -Match 'lvie-ppl-container-linux-x86-shadow\.zip'
+        $ciCatalog | Should -Match 'lvie-ppl-selfhosted-windows-x86\.zip'
         $ciCatalog | Should -Match 'docker-contract-vip-package-self-hosted-<run_id>'
         $ciCatalog | Should -Match 'resolve-source-target'
         $ciCatalog | Should -Not -Match 'lv_icon_x64\.lvlibp'

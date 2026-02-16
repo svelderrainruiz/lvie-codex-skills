@@ -31,9 +31,12 @@ CI-gated release contract:
   - strict source SHA pin is required (missing SHA fails fast).
 - Release payload includes the NSIS installer and core CI artifacts:
   - `lvie-codex-skill-layer-installer.exe`
-  - `lvie-ppl-bundle-windows-x64.zip`
-  - `lvie-ppl-bundle-linux-x64.zip`
-  - `lvie-ppl-bundle-linux-x86.zip`
+  - `lvie-ppl-container-windows-x64.zip`
+  - `lvie-ppl-container-windows-x86-shadow.zip`
+  - `lvie-ppl-container-linux-x64.zip`
+  - `lvie-ppl-container-linux-x86-shadow.zip`
+  - `lvie-ppl-selfhosted-windows-x86.zip`
+  - `lvie-ppl-selfhosted-windows-x64-shadow.zip`
   - `lvie-vip-package-self-hosted.zip`
   - `release-provenance.json`
   - `release-payload-manifest.json`
@@ -97,14 +100,14 @@ Installer contract:
   - Test results are emitted to a unique temp NUnit XML path by default (`RUNNER_TEMP`/`TEMP`) to avoid `testResults.xml` lock contention.
 - Pipeline order:
   - `docker-ci` -> `run-lunit-smoke-x64` (required native smoke gate on self-hosted Windows)
-  - `docker-ci` -> `build-x64-ppl-windows` -> `build-x64-ppl-linux`
-  - advisory: `docker-ci` -> `build-x86-ppl-linux-shadow` (non-gating Linux x86 container PPL shadow + metrics)
+  - parallel container lanes: `build-ppl-container-windows-x64`, `build-ppl-container-windows-x86-shadow`, `build-ppl-container-linux-x64`, `build-ppl-container-linux-x86-shadow`
+  - serialized self-hosted PPL matrix: `build-ppl-selfhosted-windows` (`x86` required, `x64 shadow` advisory)
   - `docker-ci` -> `gather-release-notes`
   - `docker-ci` -> `resolve-labview-profile`
   - `docker-ci` -> `validate-pylavi-docker-source-project` (non-gating deterministic source-project LabVIEW file validation in Docker)
   - `docker-ci` -> `build-runner-cli-linux-docker` (non-gating deterministic runner-cli Linux Docker build/test/publish diagnostics)
   - `docker-ci` + `gather-release-notes` + `resolve-labview-profile` -> `prepare-vipb-linux`
-  - `build-vip-self-hosted` needs `build-x64-ppl-windows`, `build-x64-ppl-linux`, `prepare-vipb-linux`, and `run-lunit-smoke-x64`
+  - `build-vip-self-hosted` needs `build-ppl-container-windows-x64`, `build-ppl-container-linux-x64`, `build-ppl-selfhosted-windows`, `prepare-vipb-linux`, and `run-lunit-smoke-x64`
   - `build-vip-self-hosted` + `resolve-labview-profile` -> `install-vip-x86-self-hosted`
   - `build-vip-self-hosted` + `install-vip-x86-self-hosted` -> `ci-self-hosted-final-gate`
 - LabVIEW target presets (advisory):
@@ -120,7 +123,7 @@ Installer contract:
   - diagnostics artifact is still uploaded for post-mortem (`capture diagnostics, then fail`).
   - canonical updater script: `scripts/Update-Vipb.DisplayInfo.ps1`; compatibility shim `scripts/Update-VipbDisplayInfo.ps1` is deprecated and forwards to canonical.
 - Windows parity preflight contract:
-  - `build-x64-ppl-windows` derives `lv_icon_editor.lvproj` path dynamically and injects it into container parity env vars.
+  - `build-ppl-container-windows-x64` derives `lv_icon_editor.lvproj` path dynamically and injects it into container parity env vars.
   - `.lvversion` must be colocated with `lv_icon_editor.lvproj`.
 - Failure triage:
   - when VIPB prep fails, `Fail if VIPB diagnostics suite failed` now logs root cause + authority status inline and points to `prepare-vipb.error.json`, `vipb-diagnostics-summary.md`, and artifact `docker-contract-vipb-prepared-linux-<run_id>`.
@@ -163,26 +166,42 @@ Installer contract:
     - dynamic runner label from `resolve-labview-profile` output: `self-hosted-windows-lv<YYYY>x86`
   - final self-hosted merge gate: `ci-self-hosted-final-gate`
 - Published artifacts:
-  - `docker-contract-ppl-windows-raw-x64-<run_id>` containing:
+  - `docker-contract-ppl-container-windows-x64-raw-<run_id>` containing:
     - `consumer/resource/plugins/lv_icon.windows.lvlibp`
-  - `docker-contract-ppl-bundle-windows-x64-<run_id>` containing:
+  - `docker-contract-ppl-container-windows-x64-<run_id>` containing:
     - `lv_icon.windows.lvlibp`
     - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
-  - `docker-contract-ppl-linux-raw-x64-<run_id>` containing:
+  - advisory `docker-contract-ppl-container-windows-x86-shadow-raw-<run_id>` containing:
+    - `consumer/resource/plugins/lv_icon.windows.x86.lvlibp`
+  - advisory `docker-contract-ppl-container-windows-x86-shadow-<run_id>` containing:
+    - `lv_icon.windows.x86.lvlibp`
+    - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
+  - advisory `docker-contract-ppl-container-windows-x86-shadow-diagnostics-<run_id>` containing:
+    - `ppl-windows-x86-shadow.status.json`
+    - `ppl-windows-x86-shadow.result.json`
+    - `ppl-windows-x86-shadow.log`
+    - `ppl-windows-x86-shadow.metrics.json` (schema-validated performance metadata)
+  - `docker-contract-ppl-container-linux-x64-raw-<run_id>` containing:
     - `consumer/resource/plugins/lv_icon.linux.lvlibp`
-  - `docker-contract-ppl-bundle-linux-x64-<run_id>` containing:
+  - `docker-contract-ppl-container-linux-x64-<run_id>` containing:
     - `lv_icon.linux.lvlibp`
     - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
-  - advisory `docker-contract-ppl-linux-raw-x86-<run_id>` containing:
+  - advisory `docker-contract-ppl-container-linux-x86-shadow-raw-<run_id>` containing:
     - `consumer/resource/plugins/lv_icon_x86.lvlibp`
-  - advisory `docker-contract-ppl-bundle-linux-x86-<run_id>` containing:
+  - advisory `docker-contract-ppl-container-linux-x86-shadow-<run_id>` containing:
     - `lv_icon_x86.lvlibp`
     - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
-  - advisory `docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id>` containing:
+  - advisory `docker-contract-ppl-container-linux-x86-shadow-diagnostics-<run_id>` containing:
     - `ppl-linux-x86-shadow.status.json`
     - `ppl-linux-x86-shadow.result.json`
     - `ppl-linux-x86-shadow.log`
     - `ppl-linux-x86-shadow.metrics.json` (schema-validated performance metadata)
+  - `docker-contract-ppl-selfhosted-windows-x86-<run_id>` containing:
+    - `lv_icon_x86.lvlibp`
+    - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
+  - advisory `docker-contract-ppl-selfhosted-windows-x64-shadow-<run_id>` containing:
+    - `lv_icon_x64.shadow.lvlibp`
+    - `ppl-manifest.json` (`ppl_sha256`, `ppl_size_bytes`, LabVIEW version/bitness provenance)
   - `docker-contract-release-notes-<run_id>` containing:
     - `release_notes.md`
     - `release-notes-manifest.json` (SHA256 and size for the gathered release notes payload)

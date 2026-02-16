@@ -59,8 +59,9 @@ Describe 'Release state control-plane contract' {
     It 'keeps owner-repo context resolution and required artifact prefixes in runtime logic' {
         $script:controlPlaneContent | Should -Match 'GITHUB_REPOSITORY'
         $script:controlPlaneContent | Should -Match 'git.*remote.*get-url.*origin'
-        $script:controlPlaneContent | Should -Match 'docker-contract-ppl-bundle-windows-x64-'
-        $script:controlPlaneContent | Should -Match 'docker-contract-ppl-bundle-linux-x64-'
+        $script:controlPlaneContent | Should -Match 'docker-contract-ppl-container-windows-x64-'
+        $script:controlPlaneContent | Should -Match 'docker-contract-ppl-container-linux-x64-'
+        $script:controlPlaneContent | Should -Match 'docker-contract-ppl-selfhosted-windows-x86-'
         $script:controlPlaneContent | Should -Match 'docker-contract-vip-package-self-hosted-'
     }
 }

@@ -66,9 +66,9 @@ env:
   CONSUMER_EXPECTED_SHA: ${{ inputs.source_project_sha || vars.LVIE_SOURCE_PROJECT_SHA || '' }}
   WINDOWS_LABVIEW_IMAGE: nationalinstruments/labview:2026q1-windows
   LINUX_LABVIEW_IMAGE: nationalinstruments/labview:2026q1-linux-pwsh
-  WINDOWS_PPL_OUTPUT_PATH: consumer/resource/plugins/lv_icon.windows.lvlibp
-  LINUX_PPL_OUTPUT_PATH: consumer/resource/plugins/lv_icon.linux.lvlibp
-  VIPB_PROJECT_PATH: 'consumer/Tooling/deployment/NI Icon editor.vipb'
+  WINDOWS_PPL_OUTPUT_PATH: resource/plugins/lv_icon.lvlibp
+  LINUX_PPL_OUTPUT_PATH: resource/plugins/lv_icon.lvlibp
+  VIPB_PROJECT_PATH: 'Tooling/deployment/NI Icon editor.vipb'
   LABVIEW_PROFILES_ROOT: profiles/labview
   DEFAULT_LABVIEW_PROFILE: ${{ inputs.labview_profile || vars.LVIE_LABVIEW_PROFILE || 'lv2026' }}
   PARITY_ENFORCEMENT_PROFILE: ${{ vars.LVIE_PARITY_ENFORCEMENT_PROFILE || 'auto' }}
@@ -553,8 +553,9 @@ jobs:
           path: ${{ runner.temp }}/lunit-smoke-x64
           if-no-files-found: error
 
-  build-x64-ppl-windows:
-    runs-on: windows-latest
+  build-ppl-container-windows-x64:
+    name: Windows Container (windows-2025) | Build PPL (x64)
+    runs-on: windows-2025
     needs: [docker-ci, resolve-source-target]
     env:
       CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
@@ -665,7 +666,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $pplPath = Join-Path $env:GITHUB_WORKSPACE $env:WINDOWS_PPL_OUTPUT_PATH
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $pplPath = Join-Path $consumerRoot $env:WINDOWS_PPL_OUTPUT_PATH
           if (-not (Test-Path -LiteralPath $pplPath -PathType Leaf)) {
             throw "Windows PPL output not found at '$pplPath'."
           }
@@ -688,20 +690,333 @@ jobs:
       - name: Upload Windows raw x64 PPL artifact
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-ppl-windows-raw-x64-${{ github.run_id }}
-          path: ${{ github.workspace }}/${{ env.WINDOWS_PPL_OUTPUT_PATH }}
+          name: docker-contract-ppl-container-windows-x64-raw-${{ github.run_id }}
+          path: ${{ github.workspace }}/consumer/${{ env.WINDOWS_PPL_OUTPUT_PATH }}
           if-no-files-found: error
 
       - name: Upload Windows x64 PPL bundle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-ppl-bundle-windows-x64-${{ github.run_id }}
+          name: docker-contract-ppl-container-windows-x64-${{ github.run_id }}
           path: ${{ runner.temp }}/ppl-bundle-windows
           if-no-files-found: error
 
-  build-x64-ppl-linux:
-    runs-on: ubuntu-latest
-    needs: [docker-ci, resolve-source-target, build-x64-ppl-windows]
+  build-ppl-container-windows-x86-shadow:
+    name: Windows Container (windows-2025) | Build PPL (x86 shadow)
+    runs-on: windows-2025
+    needs: [docker-ci, resolve-source-target]
+    continue-on-error: true
+    env:
+      CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
+      CONSUMER_REF: ${{ needs.resolve-source-target.outputs.consumer_ref }}
+      CONSUMER_EXPECTED_SHA: ${{ needs.resolve-source-target.outputs.consumer_sha }}
+    steps:
+      - name: Checkout skill repository
+        uses: actions/checkout@v4
+
+      - name: Checkout source project repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONSUMER_REPO }}
+          ref: ${{ env.CONSUMER_REF }}
+          path: consumer
+
+      - name: Verify checked out source project SHA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualSha = (git -C consumer rev-parse HEAD).Trim()
+          if ($actualSha -ne $env:CONSUMER_EXPECTED_SHA) {
+            throw "Source project SHA mismatch. Expected '$env:CONSUMER_EXPECTED_SHA', got '$actualSha'."
+          }
+          Write-Host "Source project SHA verified: $actualSha"
+
+      - name: Validate Windows container parity assets
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $requiredParityScript = Join-Path $consumerRoot 'Tooling/container-parity/runlabview-windows.ps1'
+          if (-not (Test-Path -LiteralPath $requiredParityScript -PathType Leaf)) {
+            throw "Missing required source project script '$requiredParityScript'."
+          }
+
+          $projectCandidates = @(Get-ChildItem -Path $consumerRoot -Recurse -File -Filter 'lv_icon_editor.lvproj')
+          if ($projectCandidates.Count -eq 0) {
+            throw "Unable to locate 'lv_icon_editor.lvproj' under '$consumerRoot'."
+          }
+          if ($projectCandidates.Count -gt 1) {
+            $candidateList = ($projectCandidates | ForEach-Object { $_.FullName }) -join '; '
+            throw "Expected exactly one 'lv_icon_editor.lvproj' under '$consumerRoot', found $($projectCandidates.Count): $candidateList"
+          }
+
+          $projectPath = $projectCandidates[0].FullName
+          $projectRelativePath = [System.IO.Path]::GetRelativePath($consumerRoot, $projectPath).Replace('\', '/')
+          $projectRelativePathWindows = $projectRelativePath -replace '/', '\'
+          $projectContainerPath = "C:\workspace\$projectRelativePathWindows"
+
+          "WINDOWS_PROJECT_RELATIVE_PATH=$projectRelativePathWindows" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "WINDOWS_PROJECT_CONTAINER_PATH=$projectContainerPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build Windows x86 PPL in NI Windows container (shadow)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $consumerWorkspace = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP 'ppl-windows-x86-shadow'
+          $commandsDir = Join-Path $diagnosticsDir 'commands'
+          $statusPath = Join-Path $diagnosticsDir 'ppl-windows-x86-shadow.status.json'
+          $resultPath = Join-Path $diagnosticsDir 'ppl-windows-x86-shadow.result.json'
+          $logPath = Join-Path $diagnosticsDir 'ppl-windows-x86-shadow.log'
+          $metricsPath = Join-Path $diagnosticsDir 'ppl-windows-x86-shadow.metrics.json'
+          $bundleDir = Join-Path $env:RUNNER_TEMP 'ppl-bundle-windows-x86-shadow'
+          $targetRelativePath = 'resource/plugins/lv_icon.windows.x86.lvlibp'
+          $buildRelativePath = 'resource/plugins/lv_icon.lvlibp'
+          $projectRelativePath = [string]$env:WINDOWS_PROJECT_RELATIVE_PATH
+          $projectContainerPath = [string]$env:WINDOWS_PROJECT_CONTAINER_PATH
+          $startedUtc = (Get-Date).ToUniversalTime()
+          $status = 'success'
+          $reason = ''
+          $dockerExitCode = $null
+          $capturedError = $null
+
+          foreach ($path in @($diagnosticsDir, $commandsDir)) {
+            if (-not (Test-Path -LiteralPath $path -PathType Container)) {
+              New-Item -Path $path -ItemType Directory -Force | Out-Null
+            }
+          }
+          if (Test-Path -LiteralPath $bundleDir -PathType Container) {
+            Remove-Item -LiteralPath $bundleDir -Recurse -Force
+          }
+          New-Item -Path $bundleDir -ItemType Directory -Force | Out-Null
+
+          $dockerArgs = @(
+            'run',
+            '--rm',
+            '-v', "${consumerWorkspace}:C:\workspace",
+            '-e', 'LVIE_REPO_ROOT=C:\workspace',
+            '-e', 'WORKSPACE_ROOT=C:\workspace',
+            '-e', 'REPO_ROOT=C:\workspace',
+            '-e', "LVIE_PROJECT_RELATIVE_PATH=$projectRelativePath",
+            '-e', "PROJECT_PATH_REL=$projectRelativePath",
+            '-e', "LVIE_PROJECT_PATH=$projectContainerPath",
+            '-e', "PROJECT_PATH=$projectContainerPath",
+            '-e', 'TARGET_DIR_REL=Test\Templates',
+            '-e', 'CONTAINER_PARITY_EXCLUDE_FILES=Polymorphic Template.vi',
+            '-e', 'CONTAINER_PARITY_BUILD_SPEC=true',
+            '-e', 'CONTAINER_PARITY_BUILD_SPEC_NAME=Editor Packed Library',
+            '-e', 'CONTAINER_PARITY_TARGET_NAME=My Computer',
+            '-e', "CONTAINER_PARITY_BUILD_OUTPUT_RELATIVE_PATH=$buildRelativePath",
+            '-e', "CONTAINER_PARITY_LABVIEW_VERSION=$env:LABVIEW_VERSION",
+            '-e', 'CONTAINER_PARITY_LABVIEW_BITNESS=32',
+            '-e', 'CONTAINER_PARITY_BITNESS=32',
+            '-e', 'LABVIEW_BITNESS=32',
+            $env:WINDOWS_LABVIEW_IMAGE,
+            'powershell',
+            '-NoProfile',
+            '-File',
+            'C:\workspace\Tooling\container-parity\runlabview-windows.ps1'
+          )
+          @(
+            'docker ' + ($dockerArgs -join ' ')
+          ) | Set-Content -LiteralPath (Join-Path $commandsDir 'build.txt') -Encoding UTF8
+
+          try {
+            & docker @dockerArgs 2>&1 | Tee-Object -FilePath $logPath -Append
+            $dockerExitCode = [int]$LASTEXITCODE
+            if ($dockerExitCode -ne 0) {
+              throw "Windows x86 PPL build command failed with exit code $dockerExitCode"
+            }
+
+            $builtPplPath = Join-Path $consumerWorkspace ($buildRelativePath -replace '\\', '/')
+            if (-not (Test-Path -LiteralPath $builtPplPath -PathType Leaf)) {
+              throw "Windows x86 build output not found at '$builtPplPath'."
+            }
+
+            $targetPplPath = Join-Path $consumerWorkspace ($targetRelativePath -replace '\\', '/')
+            $targetDirectory = Split-Path -Path $targetPplPath -Parent
+            if (-not [string]::IsNullOrWhiteSpace($targetDirectory) -and -not (Test-Path -LiteralPath $targetDirectory -PathType Container)) {
+              New-Item -Path $targetDirectory -ItemType Directory -Force | Out-Null
+            }
+            Copy-Item -LiteralPath $builtPplPath -Destination $targetPplPath -Force
+
+            & "$env:GITHUB_WORKSPACE/scripts/New-PplBundleManifest.ps1" `
+              -PplPath $targetPplPath `
+              -OutputDirectory $bundleDir `
+              -LabVIEWVersion $env:LABVIEW_VERSION `
+              -Bitness '32' `
+              -WindowsImage $env:WINDOWS_LABVIEW_IMAGE `
+              -BuildRunId "$env:GITHUB_RUN_ID" `
+              -BuildRunAttempt "$env:GITHUB_RUN_ATTEMPT"
+          } catch {
+            $status = 'failed'
+            $reason = $_.Exception.Message
+            $capturedError = $_
+          }
+
+          $completedUtc = (Get-Date).ToUniversalTime()
+          $durationSeconds = [int][math]::Max(0, ($completedUtc - $startedUtc).TotalSeconds)
+          $rawPplPath = Join-Path $consumerWorkspace $targetRelativePath
+          $rawArtifactSize = if (Test-Path -LiteralPath $rawPplPath -PathType Leaf) {
+            [int64](Get-Item -LiteralPath $rawPplPath).Length
+          } else {
+            $null
+          }
+          $bundleArtifactPath = Join-Path $bundleDir 'ppl-manifest.json'
+          $bundleArtifactSize = if (Test-Path -LiteralPath $bundleArtifactPath -PathType Leaf) {
+            [int64](Get-Item -LiteralPath $bundleArtifactPath).Length
+          } else {
+            $null
+          }
+
+          [pscustomobject]@{
+            generated_utc = $completedUtc.ToString('o')
+            status = $status
+            reason = $reason
+            docker_run_exit_code = $dockerExitCode
+            output_path = $targetRelativePath
+            duration_seconds = $durationSeconds
+            bundle_directory = $bundleDir
+            diagnostics_directory = $diagnosticsDir
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $resultPath -Encoding UTF8
+
+          [pscustomobject]@{
+            status = $status
+            reason = $reason
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $statusPath -Encoding UTF8
+
+          $metricsPayload = [pscustomobject]@{
+            schema_version = '1.0'
+            generated_utc = $completedUtc.ToString('o')
+            owner_repo = $env:GITHUB_REPOSITORY
+            workflow = $env:GITHUB_WORKFLOW
+            run_id = [int64]$env:GITHUB_RUN_ID
+            run_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            run_url = "https://github.com/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)"
+            head_sha = $env:GITHUB_SHA
+            expected_head_sha = $null
+            is_authoritative_latest_head = $null
+            status = 'completed'
+            conclusion = if ($status -eq 'success') { 'success' } else { 'failure' }
+            gate_outcome = if ($status -eq 'success') { 'go' } else { 'no-go' }
+            required_lanes_passed = ($status -eq 'success')
+            shadow_passed = ($status -eq 'success')
+            queue_seconds = $null
+            duration_seconds = $durationSeconds
+            lane_name = 'build-ppl-container-windows-x86-shadow'
+            lane_role = 'shadow'
+            ppl_target_os = 'windows'
+            ppl_bitness = '32'
+            container_image = $env:WINDOWS_LABVIEW_IMAGE
+            artifact_contract_hashes = @(
+              [pscustomobject]@{
+                name = "docker-contract-ppl-container-windows-x86-shadow-raw-$($env:GITHUB_RUN_ID)"
+                id = $null
+                size_in_bytes = $rawArtifactSize
+              }
+              [pscustomobject]@{
+                name = "docker-contract-ppl-container-windows-x86-shadow-$($env:GITHUB_RUN_ID)"
+                id = $null
+                size_in_bytes = $bundleArtifactSize
+              }
+            )
+          }
+          $metricsJson = $metricsPayload | ConvertTo-Json -Depth 10
+          $schemaPath = Join-Path $env:GITHUB_WORKSPACE 'schemas/control-plane-green-run.schema.json'
+          if (-not (Test-Path -LiteralPath $schemaPath -PathType Leaf)) {
+            throw "Control-plane green-run schema not found: $schemaPath"
+          }
+          $isValidMetricsPayload = $metricsJson | Test-Json -SchemaFile $schemaPath
+          if (-not $isValidMetricsPayload) {
+            throw "Windows x86 shadow metrics payload failed schema validation."
+          }
+          Set-Content -LiteralPath $metricsPath -Value $metricsJson -Encoding UTF8
+
+          if ($null -ne $capturedError) {
+            throw $capturedError
+          }
+
+      - name: Publish Windows x86 shadow summary
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP 'ppl-windows-x86-shadow'
+          $statusPath = Join-Path $diagnosticsDir 'ppl-windows-x86-shadow.status.json'
+          $resultPath = Join-Path $diagnosticsDir 'ppl-windows-x86-shadow.result.json'
+
+          $status = 'missing'
+          $reason = ''
+          $durationSeconds = ''
+          if (Test-Path -LiteralPath $statusPath -PathType Leaf) {
+            try {
+              $statusPayload = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+              $status = [string]$statusPayload.status
+              $reason = [string]$statusPayload.reason
+            } catch {
+              $status = 'invalid'
+              $reason = "Unable to parse status payload: $($_.Exception.Message)"
+            }
+          } else {
+            $reason = "Status payload not found at '$statusPath'."
+          }
+
+          if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+            try {
+              $resultPayload = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+              if ($null -ne $resultPayload.duration_seconds) {
+                $durationSeconds = [string]$resultPayload.duration_seconds
+              }
+            } catch {
+              if ([string]::IsNullOrWhiteSpace($reason)) {
+                $reason = "Unable to parse result payload: $($_.Exception.Message)"
+              }
+            }
+          }
+
+          $durationDisplay = if ([string]::IsNullOrWhiteSpace($durationSeconds)) { 'n/a' } else { $durationSeconds }
+          $reasonDisplay = if ([string]::IsNullOrWhiteSpace($reason)) { 'n/a' } else { $reason }
+
+          @(
+            '## Windows x86 container PPL shadow lane'
+            ''
+            "- Status: $status"
+            "- Duration seconds: $durationDisplay"
+            "- Reason: $reasonDisplay"
+            "- Raw artifact: docker-contract-ppl-container-windows-x86-shadow-raw-$env:GITHUB_RUN_ID"
+            "- Bundle artifact: docker-contract-ppl-container-windows-x86-shadow-$env:GITHUB_RUN_ID"
+            "- Diagnostics artifact: docker-contract-ppl-container-windows-x86-shadow-diagnostics-$env:GITHUB_RUN_ID"
+          ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload Windows raw x86 PPL artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-container-windows-x86-shadow-raw-${{ github.run_id }}
+          path: ${{ github.workspace }}/consumer/resource/plugins/lv_icon.windows.x86.lvlibp
+          if-no-files-found: error
+
+      - name: Upload Windows x86 shadow PPL bundle artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-container-windows-x86-shadow-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-bundle-windows-x86-shadow
+          if-no-files-found: error
+
+      - name: Upload Windows x86 shadow diagnostics artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-container-windows-x86-shadow-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-windows-x86-shadow
+          if-no-files-found: error
+
+  build-ppl-container-linux-x64:
+    name: Linux Container (ubuntu-24.04) | Build PPL (x64)
+    runs-on: ubuntu-24.04
+    needs: [docker-ci, resolve-source-target]
     env:
       CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
       CONSUMER_REF: ${{ needs.resolve-source-target.outputs.consumer_ref }}
@@ -811,7 +1126,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $pplPath = Join-Path $env:GITHUB_WORKSPACE $env:LINUX_PPL_OUTPUT_PATH
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $pplPath = Join-Path $consumerRoot $env:LINUX_PPL_OUTPUT_PATH
           if (-not (Test-Path -LiteralPath $pplPath -PathType Leaf)) {
             throw "Linux PPL output not found at '$pplPath'."
           }
@@ -834,20 +1150,21 @@ jobs:
       - name: Upload Linux raw x64 PPL artifact
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-ppl-linux-raw-x64-${{ github.run_id }}
-          path: ${{ github.workspace }}/${{ env.LINUX_PPL_OUTPUT_PATH }}
+          name: docker-contract-ppl-container-linux-x64-raw-${{ github.run_id }}
+          path: ${{ github.workspace }}/consumer/${{ env.LINUX_PPL_OUTPUT_PATH }}
           if-no-files-found: error
 
       - name: Upload Linux x64 PPL bundle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-ppl-bundle-linux-x64-${{ github.run_id }}
+          name: docker-contract-ppl-container-linux-x64-${{ github.run_id }}
           path: ${{ runner.temp }}/ppl-bundle-linux
           if-no-files-found: error
 
-  build-x86-ppl-linux-shadow:
-    runs-on: ubuntu-latest
-    needs: [docker-ci, resolve-source-target, build-x64-ppl-linux]
+  build-ppl-container-linux-x86-shadow:
+    name: Linux Container (ubuntu-24.04) | Build PPL (x86 shadow)
+    runs-on: ubuntu-24.04
+    needs: [docker-ci, resolve-source-target]
     continue-on-error: true
     env:
       CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
@@ -907,7 +1224,8 @@ jobs:
             fi
           fi
 
-      - name: Build Linux x86 PPL via runner-cli parity (shadow)
+      - id: run-linux-x86-shadow
+        name: Build Linux x86 PPL via runner-cli parity (shadow)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -1084,7 +1402,7 @@ jobs:
             shadow_passed = ($status -eq 'success')
             queue_seconds = $null
             duration_seconds = $durationSeconds
-            lane_name = 'build-x86-ppl-linux-shadow'
+            lane_name = 'build-ppl-container-linux-x86-shadow'
             lane_role = 'shadow'
             ppl_target_os = 'linux'
             ppl_bitness = '32'
@@ -1099,12 +1417,12 @@ jobs:
             )
             artifact_contract_hashes = @(
               [pscustomobject]@{
-                name = "docker-contract-ppl-linux-raw-x86-$($env:GITHUB_RUN_ID)"
+                name = "docker-contract-ppl-container-linux-x86-shadow-raw-$($env:GITHUB_RUN_ID)"
                 id = $null
                 size_in_bytes = $rawArtifactSize
               }
               [pscustomobject]@{
-                name = "docker-contract-ppl-bundle-linux-x86-$($env:GITHUB_RUN_ID)"
+                name = "docker-contract-ppl-container-linux-x86-shadow-$($env:GITHUB_RUN_ID)"
                 id = $null
                 size_in_bytes = $bundleArtifactSize
               }
@@ -1121,9 +1439,11 @@ jobs:
           }
           Set-Content -LiteralPath $metricsPath -Value $metricsJson -Encoding UTF8
 
+          "lane_status=$status" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($null -ne $capturedError) {
-            throw $capturedError
+            Write-Warning "Linux x86 shadow lane failed but remains non-gating: $reason"
           }
+          $global:LASTEXITCODE = 0
 
       - name: Publish Linux x86 shadow summary
         if: always()
@@ -1172,24 +1492,24 @@ jobs:
             "- Status: $status"
             "- Duration seconds: $durationDisplay"
             "- Reason: $reasonDisplay"
-            "- Raw artifact: docker-contract-ppl-linux-raw-x86-$env:GITHUB_RUN_ID"
-            "- Bundle artifact: docker-contract-ppl-bundle-linux-x86-$env:GITHUB_RUN_ID"
-            "- Diagnostics artifact: docker-contract-ppl-linux-x86-shadow-diagnostics-$env:GITHUB_RUN_ID"
+            "- Raw artifact: docker-contract-ppl-container-linux-x86-shadow-raw-$env:GITHUB_RUN_ID"
+            "- Bundle artifact: docker-contract-ppl-container-linux-x86-shadow-$env:GITHUB_RUN_ID"
+            "- Diagnostics artifact: docker-contract-ppl-container-linux-x86-shadow-diagnostics-$env:GITHUB_RUN_ID"
           ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Upload Linux raw x86 PPL artifact
-        if: success()
+        if: ${{ always() && steps.run-linux-x86-shadow.outputs.lane_status == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-ppl-linux-raw-x86-${{ github.run_id }}
+          name: docker-contract-ppl-container-linux-x86-shadow-raw-${{ github.run_id }}
           path: ${{ github.workspace }}/consumer/resource/plugins/lv_icon_x86.lvlibp
           if-no-files-found: error
 
       - name: Upload Linux x86 PPL bundle artifact
-        if: success()
+        if: ${{ always() && steps.run-linux-x86-shadow.outputs.lane_status == 'success' }}
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-ppl-bundle-linux-x86-${{ github.run_id }}
+          name: docker-contract-ppl-container-linux-x86-shadow-${{ github.run_id }}
           path: ${{ runner.temp }}/ppl-bundle-linux-x86
           if-no-files-found: error
 
@@ -1197,8 +1517,417 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-ppl-linux-x86-shadow-diagnostics-${{ github.run_id }}
+          name: docker-contract-ppl-container-linux-x86-shadow-diagnostics-${{ github.run_id }}
           path: ${{ runner.temp }}/ppl-linux-x86-shadow
+          if-no-files-found: error
+
+  build-ppl-selfhosted-windows:
+    name: Self-Hosted Windows | Build PPL (${{ matrix.display_name }})
+    runs-on:
+      - self-hosted
+      - windows
+      - ${{ needs.resolve-labview-profile.outputs.source_runner_label_x64 }}
+      - ${{ needs.resolve-labview-profile.outputs.source_runner_label_x86 }}
+    needs: [resolve-source-target, resolve-labview-profile]
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - lane_key: x86
+            display_name: x86
+            supported_bitness: '32'
+            output_file_name: lv_icon_x86.lvlibp
+            lane_role: required
+            allow_failure: false
+          - lane_key: x64-shadow
+            display_name: x64 shadow
+            supported_bitness: '64'
+            output_file_name: lv_icon_x64.shadow.lvlibp
+            lane_role: shadow
+            allow_failure: true
+    continue-on-error: ${{ matrix.allow_failure }}
+    concurrency:
+      group: ppl-selfhosted-windows-${{ github.repository }}-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
+      CONSUMER_REF: ${{ needs.resolve-source-target.outputs.consumer_ref }}
+      CONSUMER_EXPECTED_SHA: ${{ needs.resolve-source-target.outputs.consumer_sha }}
+      VERSION_MAJOR: '0'
+      VERSION_MINOR: '1'
+      VERSION_PATCH: '0'
+      VERSION_BUILD: '${{ github.run_number }}'
+      VERSION_COMMIT: '${{ github.sha }}'
+      EFFECTIVE_LVVERSION_RAW: ${{ needs.resolve-labview-profile.outputs.effective_lvversion_raw }}
+      EFFECTIVE_LABVIEW_YEAR: ${{ needs.resolve-labview-profile.outputs.effective_labview_year }}
+      LVIE_RUNNER_CLI_SKIP_BUILD: '1'
+      LVIE_RUNNER_CLI_SKIP_DOWNLOAD: '1'
+    steps:
+      - name: Checkout skill repository
+        uses: actions/checkout@v4
+
+      - name: Checkout source project repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONSUMER_REPO }}
+          ref: ${{ env.CONSUMER_REF }}
+          path: consumer
+
+      - name: Verify checked out source project SHA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actualSha = (git -C consumer rev-parse HEAD).Trim()
+          if ($actualSha -ne $env:CONSUMER_EXPECTED_SHA) {
+            throw "Source project SHA mismatch. Expected '$env:CONSUMER_EXPECTED_SHA', got '$actualSha'."
+          }
+          Write-Host "Source project SHA verified: $actualSha"
+
+      - name: Assert source project remotes
+        shell: pwsh
+        env:
+          MATRIX_LANE_KEY: ${{ matrix.lane_key }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $outputDirectory = Join-Path $env:RUNNER_TEMP "source-project-remotes-selfhosted-ppl-$env:MATRIX_LANE_KEY"
+          if (Test-Path -LiteralPath $outputDirectory -PathType Container) {
+            Remove-Item -LiteralPath $outputDirectory -Recurse -Force
+          }
+          New-Item -Path $outputDirectory -ItemType Directory -Force | Out-Null
+
+          & "$env:GITHUB_WORKSPACE/scripts/Assert-SourceProjectRemotes.ps1" `
+            -SourceProjectRoot (Join-Path $env:GITHUB_WORKSPACE 'consumer') `
+            -UpstreamRepo $env:CONSUMER_REPO `
+            -OutputDirectory $outputDirectory
+
+      - name: Bootstrap worktree guard context
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $worktreeRoot = Join-Path $env:GITHUB_WORKSPACE 'worktrees'
+          if (-not (Test-Path -LiteralPath $worktreeRoot -PathType Container)) {
+            New-Item -Path $worktreeRoot -ItemType Directory -Force | Out-Null
+          }
+          "LVIE_WORKTREE_ROOT=$worktreeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "LVIE_SKIP_WORKTREE_ROOT_CHECK=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Exported LVIE_WORKTREE_ROOT=$worktreeRoot"
+
+      - name: Build self-hosted PPL (serialized matrix)
+        shell: pwsh
+        env:
+          MATRIX_LANE_KEY: ${{ matrix.lane_key }}
+          MATRIX_SUPPORTED_BITNESS: ${{ matrix.supported_bitness }}
+          MATRIX_OUTPUT_FILE_NAME: ${{ matrix.output_file_name }}
+          MATRIX_LANE_ROLE: ${{ matrix.lane_role }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $laneKey = $env:MATRIX_LANE_KEY
+          $supportedBitness = $env:MATRIX_SUPPORTED_BITNESS
+          $laneRole = $env:MATRIX_LANE_ROLE
+          $outputFileName = $env:MATRIX_OUTPUT_FILE_NAME
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP ("ppl-selfhosted-{0}" -f $laneKey)
+          $commandsDir = Join-Path $diagnosticsDir 'commands'
+          $statusPath = Join-Path $diagnosticsDir ("ppl-selfhosted-{0}.status.json" -f $laneKey)
+          $resultPath = Join-Path $diagnosticsDir ("ppl-selfhosted-{0}.result.json" -f $laneKey)
+          $logPath = Join-Path $diagnosticsDir ("ppl-selfhosted-{0}.log" -f $laneKey)
+          $metricsPath = Join-Path $diagnosticsDir ("ppl-selfhosted-{0}.metrics.json" -f $laneKey)
+          $bundleDir = Join-Path $env:RUNNER_TEMP ("ppl-bundle-selfhosted-{0}" -f $laneKey)
+          $targetPplPath = Join-Path $consumerRoot ("resource/plugins/{0}" -f $outputFileName)
+          $startedUtc = (Get-Date).ToUniversalTime()
+          $status = 'success'
+          $reason = ''
+          $capturedError = $null
+
+          foreach ($path in @($diagnosticsDir, $commandsDir)) {
+            if (Test-Path -LiteralPath $path -PathType Container) {
+              Remove-Item -LiteralPath $path -Recurse -Force
+            }
+            New-Item -Path $path -ItemType Directory -Force | Out-Null
+          }
+          if (Test-Path -LiteralPath $bundleDir -PathType Container) {
+            Remove-Item -LiteralPath $bundleDir -Recurse -Force
+          }
+          New-Item -Path $bundleDir -ItemType Directory -Force | Out-Null
+
+          $closeScriptPath = Join-Path $consumerRoot '.github/actions/close-labview/Close_LabVIEW.ps1'
+          $closeScriptBackupPath = Join-Path $consumerRoot '.github/actions/close-labview/Close_LabVIEW.gcli.ps1'
+          if (Test-Path -LiteralPath $closeScriptPath -PathType Leaf) {
+            Move-Item -LiteralPath $closeScriptPath -Destination $closeScriptBackupPath -Force
+          }
+
+          function Invoke-LabVIEWCliClose {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$LabVIEWYear,
+              [Parameter(Mandatory = $true)]
+              [ValidateSet('32', '64')]
+              [string]$Bitness
+            )
+
+            $installRoot = if ($Bitness -eq '32') {
+              "C:\Program Files (x86)\National Instruments\LabVIEW $LabVIEWYear"
+            } else {
+              "C:\Program Files\National Instruments\LabVIEW $LabVIEWYear"
+            }
+            $labviewPath = Join-Path $installRoot 'LabVIEW.exe'
+            $closeArgs = @(
+              '-LogToConsole', 'TRUE',
+              '-OperationName', 'CloseLabVIEW',
+              '-LabVIEWPath', $labviewPath,
+              '-PortNumber', '3363'
+            )
+            & LabVIEWCLI @closeArgs
+            $closeExitCode = $LASTEXITCODE
+            if ($closeExitCode -ne 0) {
+              Write-Warning "LabVIEWCLI CloseLabVIEW returned exit code $closeExitCode for $Bitness-bit."
+            }
+            $global:LASTEXITCODE = 0
+          }
+
+          function Test-TargetLabVIEWProcessRunning {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$LabVIEWYear,
+              [Parameter(Mandatory = $true)]
+              [ValidateSet('32', '64')]
+              [string]$Bitness
+            )
+
+            $installRoot = if ($Bitness -eq '32') {
+              "C:\Program Files (x86)\National Instruments\LabVIEW $LabVIEWYear"
+            } else {
+              "C:\Program Files\National Instruments\LabVIEW $LabVIEWYear"
+            }
+
+            $processes = Get-CimInstance Win32_Process -Filter "Name='LabVIEW.exe'" -ErrorAction SilentlyContinue
+            if (-not $processes) { return $false }
+            foreach ($process in $processes) {
+              if ($process.ExecutablePath -and $process.ExecutablePath.StartsWith($installRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+              }
+            }
+            return $false
+          }
+
+          try {
+            $year = [string]$env:EFFECTIVE_LABVIEW_YEAR
+            $bitnessLabel = if ($supportedBitness -eq '32') { '32' } else { '64' }
+
+            Invoke-LabVIEWCliClose -LabVIEWYear $year -Bitness $bitnessLabel
+            Start-Sleep -Seconds 2
+            Invoke-LabVIEWCliClose -LabVIEWYear $year -Bitness $bitnessLabel
+            Start-Sleep -Seconds 2
+            if (Test-TargetLabVIEWProcessRunning -LabVIEWYear $year -Bitness $bitnessLabel) {
+              throw "LabVIEW $year ($bitnessLabel-bit) is still running after close attempts; aborting $laneKey build."
+            }
+
+            @(
+              "BuildProjectSpec.ps1 -LabVIEWVersion $env:EFFECTIVE_LVVERSION_RAW -SupportedBitness $supportedBitness -RepoRoot $consumerRoot"
+            ) | Set-Content -LiteralPath (Join-Path $commandsDir 'build.txt') -Encoding UTF8
+
+            & "$consumerRoot/.github/actions/build-lvlibp/BuildProjectSpec.ps1" `
+              -LabVIEWVersion $env:EFFECTIVE_LVVERSION_RAW `
+              -SupportedBitness $supportedBitness `
+              -RepoRoot "$consumerRoot" `
+              -Major $env:VERSION_MAJOR `
+              -Minor $env:VERSION_MINOR `
+              -Patch $env:VERSION_PATCH `
+              -Build $env:VERSION_BUILD `
+              -Commit $env:VERSION_COMMIT `
+              -SkipWorktreeRootCheck 2>&1 | Tee-Object -FilePath $logPath -Append
+
+            if ($LASTEXITCODE -ne 0) {
+              throw "BuildProjectSpec.ps1 failed with exit code $LASTEXITCODE for lane '$laneKey'."
+            }
+
+            $builtPplPath = Join-Path $consumerRoot 'resource/plugins/lv_icon.lvlibp'
+            if (-not (Test-Path -LiteralPath $builtPplPath -PathType Leaf)) {
+              throw "Native self-hosted PPL output not found at '$builtPplPath'."
+            }
+
+            & "$consumerRoot/.github/actions/rename-file/Rename-file.ps1" `
+              -CurrentFilename $builtPplPath `
+              -NewFilename $targetPplPath
+
+            if (-not (Test-Path -LiteralPath $targetPplPath -PathType Leaf)) {
+              throw "Renamed PPL output not found at '$targetPplPath'."
+            }
+
+            & "$env:GITHUB_WORKSPACE/scripts/New-PplBundleManifest.ps1" `
+              -PplPath $targetPplPath `
+              -OutputDirectory $bundleDir `
+              -LabVIEWVersion $env:EFFECTIVE_LABVIEW_YEAR `
+              -Bitness $supportedBitness `
+              -WindowsImage 'self-hosted-windows' `
+              -BuildRunId "$env:GITHUB_RUN_ID" `
+              -BuildRunAttempt "$env:GITHUB_RUN_ATTEMPT"
+
+            Invoke-LabVIEWCliClose -LabVIEWYear $year -Bitness $bitnessLabel
+          } catch {
+            $status = 'failed'
+            $reason = $_.Exception.Message
+            $capturedError = $_
+          } finally {
+            if (Test-Path -LiteralPath $closeScriptBackupPath -PathType Leaf) {
+              Move-Item -LiteralPath $closeScriptBackupPath -Destination $closeScriptPath -Force
+            }
+          }
+
+          $completedUtc = (Get-Date).ToUniversalTime()
+          $durationSeconds = [int][math]::Max(0, ($completedUtc - $startedUtc).TotalSeconds)
+          $bundleArtifactPath = Join-Path $bundleDir 'ppl-manifest.json'
+          $bundleArtifactSize = if (Test-Path -LiteralPath $bundleArtifactPath -PathType Leaf) {
+            [int64](Get-Item -LiteralPath $bundleArtifactPath).Length
+          } else {
+            $null
+          }
+
+          [pscustomobject]@{
+            generated_utc = $completedUtc.ToString('o')
+            status = $status
+            reason = $reason
+            lane_key = $laneKey
+            lane_role = $laneRole
+            output_path = $targetPplPath
+            duration_seconds = $durationSeconds
+            bundle_directory = $bundleDir
+            diagnostics_directory = $diagnosticsDir
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $resultPath -Encoding UTF8
+
+          [pscustomobject]@{
+            status = $status
+            reason = $reason
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $statusPath -Encoding UTF8
+
+          $artifactName = if ($laneKey -eq 'x86') {
+            "docker-contract-ppl-selfhosted-windows-x86-$($env:GITHUB_RUN_ID)"
+          } else {
+            "docker-contract-ppl-selfhosted-windows-x64-shadow-$($env:GITHUB_RUN_ID)"
+          }
+
+          $metricsPayload = [pscustomobject]@{
+            schema_version = '1.0'
+            generated_utc = $completedUtc.ToString('o')
+            owner_repo = $env:GITHUB_REPOSITORY
+            workflow = $env:GITHUB_WORKFLOW
+            run_id = [int64]$env:GITHUB_RUN_ID
+            run_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            run_url = "https://github.com/$($env:GITHUB_REPOSITORY)/actions/runs/$($env:GITHUB_RUN_ID)"
+            head_sha = $env:GITHUB_SHA
+            expected_head_sha = $null
+            is_authoritative_latest_head = $null
+            status = 'completed'
+            conclusion = if ($status -eq 'success') { 'success' } else { 'failure' }
+            gate_outcome = if ($status -eq 'success') { 'go' } else { 'no-go' }
+            required_lanes_passed = ($status -eq 'success')
+            shadow_passed = ($status -eq 'success')
+            queue_seconds = $null
+            duration_seconds = $durationSeconds
+            lane_name = "build-ppl-selfhosted-windows-$laneKey"
+            lane_role = $laneRole
+            ppl_target_os = 'windows'
+            ppl_bitness = if ($supportedBitness -eq '32') { '32' } else { '64' }
+            container_image = $null
+            artifact_contract_hashes = @(
+              [pscustomobject]@{
+                name = $artifactName
+                id = $null
+                size_in_bytes = $bundleArtifactSize
+              }
+            )
+          }
+          $metricsJson = $metricsPayload | ConvertTo-Json -Depth 10
+          $schemaPath = Join-Path $env:GITHUB_WORKSPACE 'schemas/control-plane-green-run.schema.json'
+          $isValidMetricsPayload = $metricsJson | Test-Json -SchemaFile $schemaPath
+          if (-not $isValidMetricsPayload) {
+            throw "Self-hosted $laneKey metrics payload failed schema validation."
+          }
+          Set-Content -LiteralPath $metricsPath -Value $metricsJson -Encoding UTF8
+
+          if ($null -ne $capturedError) {
+            throw $capturedError
+          }
+
+      - name: Publish self-hosted matrix summary
+        if: always()
+        shell: pwsh
+        env:
+          MATRIX_LANE_KEY: ${{ matrix.lane_key }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $laneKey = $env:MATRIX_LANE_KEY
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP ("ppl-selfhosted-{0}" -f $laneKey)
+          $statusPath = Join-Path $diagnosticsDir ("ppl-selfhosted-{0}.status.json" -f $laneKey)
+          $resultPath = Join-Path $diagnosticsDir ("ppl-selfhosted-{0}.result.json" -f $laneKey)
+
+          $status = 'missing'
+          $reason = ''
+          $durationSeconds = ''
+          if (Test-Path -LiteralPath $statusPath -PathType Leaf) {
+            $statusPayload = Get-Content -LiteralPath $statusPath -Raw | ConvertFrom-Json
+            $status = [string]$statusPayload.status
+            $reason = [string]$statusPayload.reason
+          }
+          if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
+            $resultPayload = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
+            if ($null -ne $resultPayload.duration_seconds) {
+              $durationSeconds = [string]$resultPayload.duration_seconds
+            }
+          }
+
+          $artifactName = if ($laneKey -eq 'x86') {
+            "docker-contract-ppl-selfhosted-windows-x86-$env:GITHUB_RUN_ID"
+          } else {
+            "docker-contract-ppl-selfhosted-windows-x64-shadow-$env:GITHUB_RUN_ID"
+          }
+          $diagnosticsArtifactName = if ($laneKey -eq 'x86') {
+            "docker-contract-ppl-selfhosted-windows-x86-diagnostics-$env:GITHUB_RUN_ID"
+          } else {
+            "docker-contract-ppl-selfhosted-windows-x64-shadow-diagnostics-$env:GITHUB_RUN_ID"
+          }
+
+          @(
+            "## Self-hosted Windows PPL lane: $laneKey"
+            ''
+            "- Status: $status"
+            "- Duration seconds: $(if ([string]::IsNullOrWhiteSpace($durationSeconds)) { 'n/a' } else { $durationSeconds })"
+            "- Reason: $(if ([string]::IsNullOrWhiteSpace($reason)) { 'n/a' } else { $reason })"
+            "- Bundle artifact: $artifactName"
+            "- Diagnostics artifact: $diagnosticsArtifactName"
+          ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload self-hosted x86 PPL bundle artifact
+        if: success() && matrix.lane_key == 'x86'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-selfhosted-windows-x86-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-bundle-selfhosted-x86
+          if-no-files-found: error
+
+      - name: Upload self-hosted x64 shadow PPL bundle artifact
+        if: success() && matrix.lane_key == 'x64-shadow'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-selfhosted-windows-x64-shadow-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-bundle-selfhosted-x64-shadow
+          if-no-files-found: error
+
+      - name: Upload self-hosted x86 diagnostics artifact
+        if: always() && matrix.lane_key == 'x86'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-selfhosted-windows-x86-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-selfhosted-x86
+          if-no-files-found: error
+
+      - name: Upload self-hosted x64 shadow diagnostics artifact
+        if: always() && matrix.lane_key == 'x64-shadow'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-contract-ppl-selfhosted-windows-x64-shadow-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-selfhosted-x64-shadow
           if-no-files-found: error
 
   gather-release-notes:
@@ -1636,7 +2365,7 @@ jobs:
 
           & "$env:GITHUB_WORKSPACE/scripts/Invoke-PrepareVipbDiagnostics.ps1" `
             -RepoRoot (Join-Path $env:GITHUB_WORKSPACE 'consumer') `
-            -VipbPath (Join-Path $env:GITHUB_WORKSPACE $env:VIPB_PROJECT_PATH) `
+            -VipbPath (Join-Path (Join-Path $env:GITHUB_WORKSPACE 'consumer') $env:VIPB_PROJECT_PATH) `
             -ReleaseNotesFile (Join-Path $env:GITHUB_WORKSPACE 'consumer/Tooling/deployment/release_notes.md') `
             -DisplayInformationJson $env:DISPLAY_INFORMATION_JSON `
             -LabVIEWVersionYear '${{ steps.labview-version.outputs.year }}' `
@@ -1807,12 +2536,12 @@ jobs:
           Write-Host "VIPB diagnostics suite completed with status '$status'."
 
   build-vip-self-hosted:
+    name: Self-Hosted Windows | Build VI Package
     runs-on:
       - self-hosted
       - windows
       - ${{ needs.resolve-labview-profile.outputs.source_runner_label_x64 }}
-      - ${{ needs.resolve-labview-profile.outputs.source_runner_label_x86 }}
-    needs: [resolve-source-target, build-x64-ppl-windows, build-x64-ppl-linux, prepare-vipb-linux, run-lunit-smoke-x64, resolve-labview-profile]
+    needs: [resolve-source-target, build-ppl-container-windows-x64, build-ppl-container-linux-x64, build-ppl-selfhosted-windows, prepare-vipb-linux, run-lunit-smoke-x64, resolve-labview-profile]
     env:
       CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
       CONSUMER_REF: ${{ needs.resolve-source-target.outputs.consumer_ref }}
@@ -1961,8 +2690,14 @@ jobs:
       - name: Download Windows x64 PPL bundle artifact
         uses: actions/download-artifact@v4
         with:
-          name: docker-contract-ppl-bundle-windows-x64-${{ github.run_id }}
+          name: docker-contract-ppl-container-windows-x64-${{ github.run_id }}
           path: ${{ runner.temp }}/ppl-bundle-windows
+
+      - name: Download self-hosted x86 PPL bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-contract-ppl-selfhosted-windows-x86-${{ github.run_id }}
+          path: ${{ runner.temp }}/ppl-bundle-selfhosted-x86
 
       - name: Download prepared VIPB artifact
         uses: actions/download-artifact@v4
@@ -1979,7 +2714,7 @@ jobs:
             throw "Prepared VIPB artifact is missing '$sourceVipbPath'."
           }
 
-          $targetVipbPath = Join-Path $env:GITHUB_WORKSPACE $env:VIPB_PROJECT_PATH
+          $targetVipbPath = Join-Path (Join-Path $env:GITHUB_WORKSPACE 'consumer') $env:VIPB_PROJECT_PATH
           $targetVipbDirectory = Split-Path -Path $targetVipbPath -Parent
           if (-not (Test-Path -LiteralPath $targetVipbDirectory -PathType Container)) {
             New-Item -Path $targetVipbDirectory -ItemType Directory -Force | Out-Null
@@ -1999,164 +2734,20 @@ jobs:
             -ExpectedLabVIEWVersion $env:LABVIEW_VERSION `
             -ExpectedBitness '64'
 
-      - name: Build native 32-bit PPL
+      - name: Consume self-hosted Windows x86 PPL bundle
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
-          $labviewVersionRaw = '${{ steps.labview-version.outputs.raw }}'
-          $labviewYear = '${{ steps.labview-version.outputs.year }}'
-          $closeScriptPath = Join-Path $consumerRoot '.github/actions/close-labview/Close_LabVIEW.ps1'
-          $closeScriptBackupPath = Join-Path $consumerRoot '.github/actions/close-labview/Close_LabVIEW.gcli.ps1'
-          if (Test-Path -LiteralPath $closeScriptPath -PathType Leaf) {
-            Move-Item -LiteralPath $closeScriptPath -Destination $closeScriptBackupPath -Force
-            Write-Host ("Temporarily disabled g-cli close hook at '{0}' for native PPL build lane." -f $closeScriptPath)
-          }
+          $bundleDir = Join-Path $env:RUNNER_TEMP 'ppl-bundle-selfhosted-x86'
+          $targetPplPath = Join-Path $consumerRoot 'resource/plugins/lv_icon_x86.lvlibp'
+          & "$env:GITHUB_WORKSPACE/scripts/Invoke-PplBundleConsume.ps1" `
+            -BundleDirectory $bundleDir `
+            -OutputPplPath $targetPplPath `
+            -ExpectedLabVIEWVersion '${{ needs.resolve-labview-profile.outputs.effective_labview_year }}' `
+            -ExpectedBitness '32'
 
-          function Invoke-LabVIEWCliClose {
-            param(
-              [Parameter(Mandatory = $true)]
-              [string]$LabVIEWYear,
-              [Parameter(Mandatory = $true)]
-              [ValidateSet('32', '64')]
-              [string]$Bitness
-            )
-
-            $labviewCli = Get-Command LabVIEWCLI -ErrorAction SilentlyContinue
-            if (-not $labviewCli) {
-              throw "LabVIEWCLI is not available on PATH."
-            }
-
-            $installRoot = if ($Bitness -eq '32') {
-              "C:\Program Files (x86)\National Instruments\LabVIEW $LabVIEWYear"
-            } else {
-              "C:\Program Files\National Instruments\LabVIEW $LabVIEWYear"
-            }
-            $labviewPath = Join-Path $installRoot 'LabVIEW.exe'
-
-            $portValue = $null
-            $bitnessPortEnvName = "LVIE_LABVIEWCLI_PORT_{0}" -f $Bitness
-            foreach ($envName in @($bitnessPortEnvName, 'LVIE_LABVIEWCLI_PORT')) {
-              $candidate = [Environment]::GetEnvironmentVariable($envName)
-              if (-not [string]::IsNullOrWhiteSpace($candidate)) {
-                $portValue = $candidate.Trim()
-                break
-              }
-            }
-
-            if ([string]::IsNullOrWhiteSpace($portValue)) {
-              $iniPath = Join-Path $installRoot 'LabVIEW.ini'
-              if (Test-Path -LiteralPath $iniPath -PathType Leaf) {
-                foreach ($line in Get-Content -LiteralPath $iniPath -ErrorAction SilentlyContinue) {
-                  if ($line -match '^\s*server\.tcp\.port\s*=\s*(\d+)\s*$') {
-                    $portValue = $Matches[1]
-                    break
-                  }
-                }
-              }
-            }
-
-            if ([string]::IsNullOrWhiteSpace($portValue)) {
-              $portValue = '3363'
-            }
-
-            $closeArgs = @(
-              '-LogToConsole', 'TRUE',
-              '-OperationName', 'CloseLabVIEW',
-              '-LabVIEWPath', $labviewPath,
-              '-PortNumber', $portValue
-            )
-
-            Write-Host ("Closing LabVIEW via LabVIEWCLI ({0}-bit, port {1})." -f $Bitness, $portValue)
-            & LabVIEWCLI @closeArgs
-            $closeExitCode = $LASTEXITCODE
-            if ($closeExitCode -ne 0) {
-              Write-Warning ("LabVIEWCLI CloseLabVIEW returned exit code {0} ({1}-bit)." -f $closeExitCode, $Bitness)
-            }
-          }
-
-          function Test-TargetLabVIEWProcessRunning {
-            param(
-              [Parameter(Mandatory = $true)]
-              [string]$LabVIEWYear,
-              [Parameter(Mandatory = $true)]
-              [ValidateSet('32', '64')]
-              [string]$Bitness
-            )
-
-            $installRoot = if ($Bitness -eq '32') {
-              "C:\Program Files (x86)\National Instruments\LabVIEW $LabVIEWYear"
-            } else {
-              "C:\Program Files\National Instruments\LabVIEW $LabVIEWYear"
-            }
-
-            $processes = Get-CimInstance Win32_Process -Filter "Name='LabVIEW.exe'" -ErrorAction SilentlyContinue
-            if (-not $processes) {
-              return $false
-            }
-
-            foreach ($process in $processes) {
-              if ($process.ExecutablePath -and $process.ExecutablePath.StartsWith($installRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-                return $true
-              }
-            }
-
-            return $false
-          }
-
-          try {
-            Invoke-LabVIEWCliClose -LabVIEWYear $labviewYear -Bitness '32'
-            Start-Sleep -Seconds 2
-
-            $targetLabVIEWStillRunning = Test-TargetLabVIEWProcessRunning -LabVIEWYear $labviewYear -Bitness '32'
-            if ($targetLabVIEWStillRunning) {
-              Write-Warning "LabVIEW $labviewYear (32-bit) is still running after initial LabVIEWCLI close; retrying close once."
-              Invoke-LabVIEWCliClose -LabVIEWYear $labviewYear -Bitness '32'
-              Start-Sleep -Seconds 2
-              $targetLabVIEWStillRunning = Test-TargetLabVIEWProcessRunning -LabVIEWYear $labviewYear -Bitness '32'
-            }
-
-            if ($targetLabVIEWStillRunning) {
-              throw "LabVIEW $labviewYear (32-bit) is still running after LabVIEWCLI close attempts; aborting native x86 PPL build for process isolation."
-            }
-
-            $runnerCliProjectPath = Join-Path $consumerRoot 'Tooling/runner-cli/RunnerCli/RunnerCli.csproj'
-            if (-not (Test-Path -LiteralPath $runnerCliProjectPath -PathType Leaf)) {
-              throw "runner-cli project not found at '$runnerCliProjectPath'."
-            }
-
-            $runnerCliArgs = @(
-              'run',
-              '--project', $runnerCliProjectPath,
-              '--',
-              'ppl', 'build',
-              '--repo-root', $consumerRoot,
-              '--labview-version', $labviewVersionRaw,
-              '--supported-bitness', '32',
-              '--major', $env:VERSION_MAJOR,
-              '--minor', $env:VERSION_MINOR,
-              '--patch', $env:VERSION_PATCH,
-              '--build', $env:VERSION_BUILD,
-              '--commit', $env:VERSION_COMMIT,
-              '--skip-worktree-root-check'
-            )
-            & dotnet @runnerCliArgs
-            if ($LASTEXITCODE -ne 0) {
-              throw "runner-cli ppl build failed with exit code $LASTEXITCODE."
-            }
-
-            Invoke-LabVIEWCliClose -LabVIEWYear $labviewYear -Bitness '32'
-          } finally {
-            if (Test-Path -LiteralPath $closeScriptBackupPath -PathType Leaf) {
-              Move-Item -LiteralPath $closeScriptBackupPath -Destination $closeScriptPath -Force
-            }
-          }
-
-          & "$consumerRoot/.github/actions/rename-file/Rename-file.ps1" `
-            -CurrentFilename "$consumerRoot/resource/plugins/lv_icon.lvlibp" `
-            -NewFilename "$consumerRoot/resource/plugins/lv_icon_x86.lvlibp"
-
-      - name: Validate consumed x64 and native x86 PPL outputs
+      - name: Validate consumed x64 and x86 PPL outputs
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -2167,7 +2758,7 @@ jobs:
             throw "Consumed x64 PPL output not found at '$x64Path'."
           }
           if (-not (Test-Path -LiteralPath $x86Path -PathType Leaf)) {
-            throw "Native x86 PPL output not found at '$x86Path'."
+            throw "Consumed x86 PPL output not found at '$x86Path'."
           }
 
       - name: Upload consumed VIPB (post-mortem)
@@ -2175,7 +2766,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-contract-vipb-modified-self-hosted-${{ github.run_id }}
-          path: ${{ env.VIPB_PROJECT_PATH }}
+          path: ${{ github.workspace }}/consumer/${{ env.VIPB_PROJECT_PATH }}
           if-no-files-found: warn
 
       - name: Build VI Package (LV 64-bit)
@@ -2444,6 +3035,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "Self-hosted CI final gate passed."
+
+
+
 
 
 

@@ -94,13 +94,19 @@ Describe 'Release workflow contract' {
         $script:releaseContent | Should -Match 'needs:\s*\[resolve-release-context,\s*ci-gate,\s*package\]'
         $script:releaseContent | Should -Match 'publish-release-assets:\s*[\s\S]*?- name:\s*Checkout\s*[\s\S]*?uses:\s*actions/checkout@v4'
         $script:releaseContent | Should -Match 'Download installer artifact'
-        $script:releaseContent | Should -Match 'pattern:\s*docker-contract-ppl-bundle-windows-x64-\*'
-        $script:releaseContent | Should -Match 'pattern:\s*docker-contract-ppl-bundle-linux-x64-\*'
-        $script:releaseContent | Should -Match 'pattern:\s*docker-contract-ppl-bundle-linux-x86-\*'
-        $script:releaseContent | Should -Match 'pattern:\s*docker-contract-vip-package-self-hosted-\*'
-        $script:releaseContent | Should -Match 'lvie-ppl-bundle-windows-x64\.zip'
-        $script:releaseContent | Should -Match 'lvie-ppl-bundle-linux-x64\.zip'
-        $script:releaseContent | Should -Match 'lvie-ppl-bundle-linux-x86\.zip'
+        $script:releaseContent | Should -Match 'name:\s*docker-contract-ppl-container-windows-x64-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:releaseContent | Should -Match 'name:\s*docker-contract-ppl-container-windows-x86-shadow-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:releaseContent | Should -Match 'name:\s*docker-contract-ppl-container-linux-x64-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:releaseContent | Should -Match 'name:\s*docker-contract-ppl-container-linux-x86-shadow-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:releaseContent | Should -Match 'name:\s*docker-contract-ppl-selfhosted-windows-x86-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:releaseContent | Should -Match 'name:\s*docker-contract-ppl-selfhosted-windows-x64-shadow-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:releaseContent | Should -Match 'name:\s*docker-contract-vip-package-self-hosted-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:releaseContent | Should -Match 'lvie-ppl-container-windows-x64\.zip'
+        $script:releaseContent | Should -Match 'lvie-ppl-container-windows-x86-shadow\.zip'
+        $script:releaseContent | Should -Match 'lvie-ppl-container-linux-x64\.zip'
+        $script:releaseContent | Should -Match 'lvie-ppl-container-linux-x86-shadow\.zip'
+        $script:releaseContent | Should -Match 'lvie-ppl-selfhosted-windows-x86\.zip'
+        $script:releaseContent | Should -Match 'lvie-ppl-selfhosted-windows-x64-shadow\.zip'
         $script:releaseContent | Should -Match 'lvie-vip-package-self-hosted\.zip'
         $script:releaseContent | Should -Match 'release-provenance\.json'
         $script:releaseContent | Should -Match 'release-payload-manifest\.json'
@@ -136,4 +142,5 @@ Describe 'Release workflow contract' {
         $script:ciContent | Should -Match 'format\(''\{0\}/labview-icon-editor'',\s*github\.repository_owner\)'
     }
 }
+
 

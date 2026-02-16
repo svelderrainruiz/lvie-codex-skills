@@ -1177,7 +1177,7 @@ jobs:
             -OutputPath (Join-Path $bundleDir 'profile-resolution.json')
 
       - id: source-labels
-        name: Resolve source project runner labels from .lvversion
+        name: Resolve effective runner labels from target preset .lvversion
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -1187,6 +1187,18 @@ jobs:
           }
 
           $resolution = Get-Content -LiteralPath $resolutionPath -Raw | ConvertFrom-Json
+          $profileRawValue = [string]$resolution.profile.lvversion_raw
+          if ([string]::IsNullOrWhiteSpace($profileRawValue)) {
+            throw "Unable to resolve selected target preset .lvversion from profile resolution payload."
+          }
+          if ($profileRawValue -notmatch '^(?<major>\d+)\.(?<minor>\d+)$') {
+            throw "Selected target preset .lvversion '$profileRawValue' is invalid. Expected numeric major.minor format."
+          }
+          $profileMajor = [int]$Matches['major']
+          if ($profileMajor -lt 20) {
+            throw "Selected target preset .lvversion '$profileRawValue' is unsupported. Minimum supported LabVIEW version is 20.0."
+          }
+
           $observedRawValue = [string]$resolution.consumer.lvversion_raw
           if ([string]::IsNullOrWhiteSpace($observedRawValue)) {
             throw "Unable to resolve observed source project .lvversion from profile resolution payload."
@@ -1197,7 +1209,7 @@ jobs:
 
           $overrideRawValue = [string]$env:SOURCE_LVVERSION_OVERRIDE
           $overrideActive = $false
-          $effectiveRawValue = $observedRawValue
+          $effectiveRawValue = $profileRawValue
 
           if (-not [string]::IsNullOrWhiteSpace($overrideRawValue)) {
             $overrideRawValue = $overrideRawValue.Trim()
@@ -1236,8 +1248,8 @@ jobs:
             Write-Host ("::warning title=Source project LabVIEW override active::source_labview_version_override '{0}' overrides observed source project .lvversion '{1}'." -f $effectiveRawValue, $observedRawValue)
           }
 
-          Write-Host "Resolved effective source project .lvversion: $effectiveRawValue"
-          Write-Host "Resolved effective source project LabVIEW year: $yearValue"
+          Write-Host "Resolved effective target preset .lvversion: $effectiveRawValue"
+          Write-Host "Resolved effective LabVIEW year for CI lanes: $yearValue"
           Write-Host "Resolved observed source project .lvversion: $observedRawValue"
           Write-Host "Resolved x86 runner label: $labelX86"
           Write-Host "Resolved x64 runner label: $labelX64"
@@ -1265,7 +1277,7 @@ jobs:
 
           if ($comparison -eq 'mismatch') {
             if ([string]::IsNullOrWhiteSpace($message)) {
-              $message = "Selected target preset '$profileId' differs from source project target. Source project remains authoritative."
+              $message = "Selected target preset '$profileId' differs from source project target. Selected target preset remains authoritative for CI runner scheduling."
             }
             Write-Host ("::warning title=LabVIEW target preset advisory mismatch::{0}" -f $message)
           }
@@ -1283,9 +1295,9 @@ jobs:
             ('- Source project observed .lvversion: `{0}`' -f $observedLvversionRaw)
             ('- Effective .lvversion: `{0}`' -f $effectiveLvversionRaw)
             ('- Override active: `{0}`' -f $overrideActive)
-            ('- Effective source project LabVIEW year: `{0}`' -f $effectiveYear)
-            ('- Source project x86 runner label: `{0}`' -f '${{ steps.source-labels.outputs.source_runner_label_x86 }}')
-            '- Source project remains authoritative for VIPB target enforcement.'
+            ('- Effective LabVIEW year for CI lanes: `{0}`' -f $effectiveYear)
+            ('- Effective x86 runner label: `{0}`' -f '${{ steps.source-labels.outputs.source_runner_label_x86 }}')
+            '- Selected target preset is authoritative for CI runner scheduling and effective .lvversion in required lanes.'
             '- Artifact: `docker-contract-labview-profile-resolution-${{ github.run_id }}`'
           ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 

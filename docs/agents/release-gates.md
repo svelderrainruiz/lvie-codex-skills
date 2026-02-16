@@ -94,6 +94,22 @@ Optional inputs:
   - invalid or unresolved SHA is still deterministic failure (no publish).
 - Manual dispatch may override resolved defaults when needed.
 
+## Shadow promotion gate policy
+- Workflow: `.github/workflows/shadow-promotion-gate.yml`
+- Scope:
+  - evaluates PRs that touch promotion surfaces (`contracts/build-lane-matrix.json`, `ci.yml`, promotion schemas/scripts/docs).
+  - detects promotion attempts for `build-ppl-container-linux-x86-shadow` when shadow semantics move toward required semantics.
+- Five-green contract:
+  - collects recent completed `ci.yml` runs on `main`.
+  - normalizes lane diagnostics to `green-run-<run_id>.json`.
+  - evaluates readiness with `scripts/Invoke-ShadowPromotionEvaluation.ps1` using threshold `5`.
+- Blocking behavior:
+  - promotion attempt + `promotion_ready=false` => fail (blocks promotion PR).
+  - no promotion attempt => non-blocking; publishes state artifact and summary only.
+- Evidence output:
+  - artifact: `shadow-promotion-state-<run_id>`
+  - summary fields: threshold, consecutive green count, promotion ready, reset reason, evaluated run IDs.
+
 ## Fork bootstrap policy
 - One-time bootstrap script:
   - `scripts/Initialize-ForkPortability.ps1`

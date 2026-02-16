@@ -32,6 +32,10 @@ Describe 'Release governance scaffolding contract' {
     It 'defines promotion lanes for canary and stable' {
         $script:promotion.lanes.name | Should -Contain 'canary'
         $script:promotion.lanes.name | Should -Contain 'stable'
+
+        $stableLane = @($script:promotion.lanes | Where-Object { [string]$_.name -eq 'stable' }) | Select-Object -First 1
+        $stableLane.required_checks | Should -Contain 'shadow-promotion-gate'
+        $stableLane.required_evidence | Should -Contain 'shadow-promotion-state-<runId>.json'
     }
 
     It 'defines rollback triggers with required evidence fields' {

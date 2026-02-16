@@ -28,7 +28,7 @@ Describe 'Generated artifact hygiene contract' {
 
         foreach ($pattern in $requiredPatterns) {
             $escaped = [regex]::Escape($pattern)
-            $content | Should -Match "(?m)^$escaped$" -Because ".gitignore must include '$pattern'"
+            $content | Should -Match "(?m)^$escaped\r?$" -Because ".gitignore must include '$pattern'"
         }
     }
 

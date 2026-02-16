@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://svelderrainruiz.github.io/lvie-codex-skills/schemas/runner-cli-provider-command.schema.json",
+  "title": "Runner CLI Provider Command Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "commands"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ppl_build",
+        "vip_build",
+        "lunit_run",
+        "lunit_validate"
+      ],
+      "properties": {
+        "ppl_build": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_options",
+            "provider_enum",
+            "bitness_enum",
+            "target_os_enum"
+          ],
+          "properties": {
+            "required_options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "allOf": [
+                { "contains": { "const": "--provider" } },
+                { "contains": { "const": "--bitness" } },
+                { "contains": { "const": "--target-os" } },
+                { "contains": { "const": "--repo-root" } },
+                { "contains": { "const": "--output-directory" } }
+              ]
+            },
+            "provider_enum": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "selfhosted",
+                  "linux-container",
+                  "windows-container"
+                ]
+              },
+              "minItems": 3
+            },
+            "bitness_enum": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "x64",
+                  "x86"
+                ]
+              },
+              "minItems": 2
+            },
+            "target_os_enum": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "windows",
+                  "linux"
+                ]
+              },
+              "minItems": 2
+            },
+            "optional_options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "vip_build": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_options"
+          ],
+          "properties": {
+            "required_options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "lunit_run": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_options"
+          ],
+          "properties": {
+            "required_options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "lunit_validate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "required_options"
+          ],
+          "properties": {
+            "required_options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

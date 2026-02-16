@@ -1,5 +1,11 @@
 # Agent Docs Change Log
 
+## 2026-02-16 — Deterministic platform architecture and M1 contract freeze
+- Added architecture ADR: `docs/architecture/adr-0001-deterministic-build-platform.md`.
+- Added M1 provider/bitness contract doc: `docs/architecture/runner-cli-provider-contract.md`.
+- Added lane graph schema skeleton: `schemas/build-lane-matrix.schema.json`.
+- Added runner-cli provider command schema: `schemas/runner-cli-provider-command.schema.json`.
+
 ## 2026-02-13 — Runner-CLI dispatch foundation planning
 - Added `runner-cli-dispatch-foundation-plan.md` to define control-plane integration scope.
 - Locked dispatch foundation scope to dispatch/run-query adapters with preserved `gh`/REST fallback behavior.

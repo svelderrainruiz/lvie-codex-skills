@@ -93,12 +93,10 @@ Installer contract:
 - Trigger: all pull requests and manual `workflow_dispatch` with optional inputs:
   - `labview_profile` (target preset id, default `lv2026`)
   - `source_labview_version_override` (effective `.lvversion` override, format `major.minor`, minimum `20.0`)
-  - `run_lv2020_edge_smoke` (optional non-gating LV2020 x64 edge diagnostics, default `false`)
 - Shared test runner: `scripts/Invoke-ContractTests.ps1` (used by local/container execution paths).
   - Test results are emitted to a unique temp NUnit XML path by default (`RUNNER_TEMP`/`TEMP`) to avoid `testResults.xml` lock contention.
 - Pipeline order:
   - `docker-ci` -> `run-lunit-smoke-x64` (required native smoke gate on self-hosted Windows)
-  - optional: `docker-ci` -> `run-lunit-smoke-lv2020x64-edge` (non-gating LV2020 x64 edge diagnostics)
   - `docker-ci` -> `build-x64-ppl-windows` -> `build-x64-ppl-linux`
   - advisory: `docker-ci` -> `build-x86-ppl-linux-shadow` (non-gating Linux x86 container PPL shadow + metrics)
   - `docker-ci` -> `gather-release-notes`
@@ -142,14 +140,9 @@ Installer contract:
   - required smoke job key is `run-lunit-smoke-x64`; it executes against source-year target (`--lv-ver <YYYY>`) with canonical direct run command only: `g-cli --lv-ver <YYYY> --arch 64 lunit -- -r <report> <project.lvproj>` (no deterministic `-h` probe).
   - `run-lunit-smoke-x64` enforces required `64-bit` coverage only.
   - `run-lunit-smoke-x64` copies the source project to a temp workspace and applies ephemeral `.lvversion=<effective .lvversion>` there (source checkout remains unchanged).
-  - optional edge diagnostics lane `run-lunit-smoke-lv2020x64-edge` can be enabled with `run_lv2020_edge_smoke: true`; it always runs fixed `2020` + `20.0` and never blocks downstream gates.
-  - `run-lunit-smoke-x64` performs required VIPM package preflight for the selected smoke target year x64: `astemes_lib_lunit` and `sas_workshops_lib_lunit_for_g_cli`.
-  - when LV2020 smoke fails with comparable validation outcomes (`no_testcases` or `failed_testcases`), the script runs a diagnostic-only LV2026 x64 control probe and records comparative outcomes in `lunit-smoke.result.json` and step summary.
-  - CI runs `run-lunit-smoke-x64` with `-EnforceLabVIEWProcessIsolation`, so active LabVIEW processes are cleared before the LV2020 run and again before any LV2026 control probe.
-  - if active LabVIEW processes cannot be cleared, the control probe is skipped with explicit reason `skipped_unable_to_clear_active_labview_processes`.
-  - required lane behavior is strict: LV2020 `no_testcases` still fails even when LV2026 control probe passes.
-  - `-AllowNoTestcasesWhenControlProbePasses` is limited to the optional `run-lunit-smoke-lv2020x64-edge` diagnostics lane.
-  - all other LV2020 failures still hard-fail the gate.
+  - `run-lunit-smoke-x64` has no VIPM dependency and no LV2020 edge/control-probe behavior.
+  - CI runs `run-lunit-smoke-x64` with `-EnforceLabVIEWProcessIsolation`, so active LabVIEW processes are cleared before smoke execution.
+  - report validation failures hard-fail the gate.
   - all self-hosted jobs enforce source project remote hygiene via `scripts/Assert-SourceProjectRemotes.ps1`:
     - configure `upstream` to `https://github.com/${{ env.CONSUMER_REPO }}.git`
     - run non-interactive `git ls-remote upstream`
@@ -195,16 +188,13 @@ Installer contract:
     - `release-notes-manifest.json` (SHA256 and size for the gathered release notes payload)
   - `docker-contract-labview-profile-resolution-<run_id>` containing:
     - `profile-resolution.json` (selected target preset, source project target, mismatch classification, warning message)
-  - `docker-contract-lunit-smoke-lv2020-<run_id>` containing:
+  - `docker-contract-lunit-smoke-x64-<run_id>` containing:
     - `lunit-smoke.status.json`
     - `lunit-smoke.result.json`
     - `lunit-smoke.log`
     - `reports/lunit-report-lv<effective_year>-x64.xml`
-    - `reports/lunit-report-lv2026-x64-control.xml` (only when LV2020 path fails and control probe executes)
     - `workspace/lvversion.before`
     - `workspace/lvversion.after`
-  - optional `docker-contract-lunit-smoke-lv2020-edge-<run_id>` containing:
-    - LV2020 edge diagnostics from non-gating job `run-lunit-smoke-lv2020x64-edge` when enabled
   - `docker-contract-pylavi-source-project-<run_id>` containing:
     - `pylavi-docker.status.json`
     - `pylavi-docker.result.json`

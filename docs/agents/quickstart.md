@@ -58,7 +58,6 @@ Use skills repo release workflow inputs in `.github/workflows/release-skill-laye
 - `consumer_sha` (source project SHA)
 - `labview_profile` (LabVIEW target preset id)
 - `source_labview_version_override` (optional effective `.lvversion` override, `major.minor`, minimum `20.0`)
-- `run_lv2020_edge_smoke` (optional non-gating LV2020 x64 edge diagnostics)
 
 Compatibility-only (deprecated) inputs:
 - `run_self_hosted`
@@ -132,20 +131,13 @@ gh api repos/<owner>/labview-icon-editor-codex-skills/actions/runners --jq '.run
   - execution target year and `.lvversion` are resolved from effective target selection in `resolve-labview-profile`,
   - when provided, `source_labview_version_override` is authoritative for CI execution target (format `major.minor`; Minimum supported LabVIEW version is 20.0),
   - when override is omitted, source project `.lvversion` is used.
-- Optional deferred LV2020 edge coverage:
-  - set `run_lv2020_edge_smoke: true` to run `run-lunit-smoke-lv2020x64-edge`,
-  - this edge lane is diagnostic-only and non-gating.
-- On LV2020 smoke failure, CI may run a diagnostic-only LV2026 x64 control probe (for comparable outcomes like `no_testcases` / `failed_testcases`) and writes comparative results into `lunit-smoke.result.json` and the job summary.
-- CI invokes `Invoke-LunitSmokeLv2020.ps1` with `-EnforceLabVIEWProcessIsolation`, so active LabVIEW processes are cleared before LV2020 run and before any LV2026 control probe.
-- If process isolation cannot clear active LabVIEW instances, control probe is skipped with reason `skipped_unable_to_clear_active_labview_processes`.
-- Required lane is strict: `run-lunit-smoke-x64` does not use `-AllowNoTestcasesWhenControlProbePasses`.
-- `-AllowNoTestcasesWhenControlProbePasses` is limited to optional `run-lunit-smoke-lv2020x64-edge`.
-- All other LV2020 smoke failures remain blocking for downstream self-hosted jobs.
-- Triage order for LV2020 smoke:
+- CI invokes `Invoke-LunitSmoke.ps1` with `-EnforceLabVIEWProcessIsolation`, so active LabVIEW processes are cleared before the smoke run.
+- The LUnit smoke lane has no VIPM preflight dependency.
+- Report validation failures remain blocking for downstream self-hosted jobs.
+- Triage order for LUnit smoke:
   1. `lunit-smoke.result.json`
   2. `reports/lunit-report-lv<effective_year>-x64.xml`
-  3. `reports/lunit-report-lv2026-x64-control.xml` (if present)
-  4. `lunit-smoke.log`
+  3. `lunit-smoke.log`
 
 ## 6.2) Runner PowerShell policy baseline
 - Required baseline for Windows/self-hosted runners:

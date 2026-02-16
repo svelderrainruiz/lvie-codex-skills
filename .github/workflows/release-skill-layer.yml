@@ -46,11 +46,6 @@ on:
         required: false
         default: ''
         type: string
-      run_lv2020_edge_smoke:
-        description: Run optional non-gating LV2020 x64 edge smoke diagnostics during CI gate.
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -67,7 +62,6 @@ jobs:
       run_build_spec: ${{ steps.resolve.outputs.run_build_spec }}
       labview_profile: ${{ steps.resolve.outputs.labview_profile }}
       source_labview_version_override: ${{ steps.resolve.outputs.source_labview_version_override }}
-      run_lv2020_edge_smoke: ${{ steps.resolve.outputs.run_lv2020_edge_smoke }}
       should_release: ${{ steps.resolve.outputs.should_release }}
       skip_reason: ${{ steps.resolve.outputs.skip_reason }}
     steps:
@@ -172,7 +166,6 @@ jobs:
           $runBuildSpec = 'true'
           $labviewProfile = $defaultLabviewProfile
           $sourceLabviewVersionOverride = ''
-          $runLv2020EdgeSmoke = 'false'
 
           if ($isWorkflowDispatch) {
             $dispatchReleaseTag = Get-DispatchInputValue -Name 'release_tag'
@@ -208,7 +201,6 @@ jobs:
               $sourceLabviewVersionOverride = $dispatchLvversionOverride
             }
 
-            $runLv2020EdgeSmoke = Resolve-BoolString -RawValue (Get-DispatchInputValue -Name 'run_lv2020_edge_smoke') -DefaultValue $false
           }
 
           if ([string]::IsNullOrWhiteSpace($releaseTag)) {
@@ -263,7 +255,6 @@ jobs:
           "run_build_spec=$runBuildSpec" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "labview_profile=$labviewProfile" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "source_labview_version_override=$sourceLabviewVersionOverride" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          "run_lv2020_edge_smoke=$runLv2020EdgeSmoke" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "should_release=$shouldRelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "skip_reason=$skipReason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -280,7 +271,6 @@ jobs:
             "- Source project sha: $consumerSha"
             "- LabVIEW profile: $labviewProfile"
             "- source_labview_version_override: $sourceLabviewOverrideDisplay"
-            "- run_lv2020_edge_smoke: $runLv2020EdgeSmoke"
             "- should_release: $shouldRelease"
             "- skip_reason: $skipReasonDisplay"
           ) -join [Environment]::NewLine
@@ -296,7 +286,6 @@ jobs:
       source_project_sha: ${{ needs.resolve-release-context.outputs.consumer_sha }}
       labview_profile: ${{ needs.resolve-release-context.outputs.labview_profile }}
       source_labview_version_override: ${{ needs.resolve-release-context.outputs.source_labview_version_override }}
-      run_lv2020_edge_smoke: ${{ fromJSON(needs.resolve-release-context.outputs.run_lv2020_edge_smoke) }}
     secrets: inherit
 
   package:
@@ -511,7 +500,6 @@ jobs:
               run_self_hosted = '${{ needs.resolve-release-context.outputs.run_self_hosted }}'
               run_build_spec = '${{ needs.resolve-release-context.outputs.run_build_spec }}'
               source_labview_version_override = '${{ needs.resolve-release-context.outputs.source_labview_version_override }}'
-              run_lv2020_edge_smoke = '${{ needs.resolve-release-context.outputs.run_lv2020_edge_smoke }}'
               nsis_root = '${{ needs.package.outputs.nsis_root }}'
             }
             assets = $assetRecords
@@ -566,7 +554,6 @@ jobs:
             '- source_project_ref: ${{ needs.resolve-release-context.outputs.consumer_ref }}',
             '- source_project_sha: ${{ needs.resolve-release-context.outputs.consumer_sha }}',
             '- source_labview_version_override: ${{ needs.resolve-release-context.outputs.source_labview_version_override }}',
-            '- run_lv2020_edge_smoke: ${{ needs.resolve-release-context.outputs.run_lv2020_edge_smoke }}',
             '- nsis_root: ${{ needs.package.outputs.nsis_root }}',
             '- run_self_hosted: ${{ needs.resolve-release-context.outputs.run_self_hosted }} (deprecated)',
             '- run_build_spec: ${{ needs.resolve-release-context.outputs.run_build_spec }} (deprecated)'

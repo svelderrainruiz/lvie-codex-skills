@@ -54,7 +54,7 @@ Describe 'Release workflow contract' {
         $script:releaseContent | Should -Match '\(Deprecated\) retained for dispatch compatibility'
         $script:releaseContent | Should -Match 'labview_profile:'
         $script:releaseContent | Should -Match 'source_labview_version_override:'
-        $script:releaseContent | Should -Match 'run_lv2020_edge_smoke:'
+        $script:releaseContent | Should -Not -Match 'run_lv2020_edge_smoke:'
     }
 
     It 'resolves source project target from inputs then repository variables with strict SHA requirement' {
@@ -73,7 +73,7 @@ Describe 'Release workflow contract' {
         $script:releaseContent | Should -Match 'source_project_sha:\s*\$\{\{\s*needs\.resolve-release-context\.outputs\.consumer_sha\s*\}\}'
         $script:releaseContent | Should -Match 'labview_profile:\s*\$\{\{\s*needs\.resolve-release-context\.outputs\.labview_profile\s*\}\}'
         $script:releaseContent | Should -Match 'source_labview_version_override:\s*\$\{\{\s*needs\.resolve-release-context\.outputs\.source_labview_version_override\s*\}\}'
-        $script:releaseContent | Should -Match 'run_lv2020_edge_smoke:\s*\$\{\{\s*fromJSON\(needs\.resolve-release-context\.outputs\.run_lv2020_edge_smoke\)\s*\}\}'
+        $script:releaseContent | Should -Not -Match 'run_lv2020_edge_smoke:\s*\$\{\{'
     }
 
     It 'implements version-gated auto-release skip when tag already exists on push' {
@@ -127,7 +127,7 @@ Describe 'Release workflow contract' {
         $script:ciContent | Should -Match 'source_project_sha:'
         $script:ciContent | Should -Match 'labview_profile:'
         $script:ciContent | Should -Match 'source_labview_version_override:'
-        $script:ciContent | Should -Match 'run_lv2020_edge_smoke:'
+        $script:ciContent | Should -Not -Match 'run_lv2020_edge_smoke:'
         $script:ciContent | Should -Match 'vars\.LVIE_SOURCE_PROJECT_REPO'
         $script:ciContent | Should -Match 'vars\.LVIE_SOURCE_PROJECT_REF'
         $script:ciContent | Should -Match 'vars\.LVIE_SOURCE_PROJECT_SHA'

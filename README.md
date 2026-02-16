@@ -7,7 +7,7 @@ Layered Codex skill assets for `labview-icon-editor` CI/runtime integrations.
 - Current layer modules:
   - `ci-debt/*`
   - `lunit-contract/*`
-  - `proactive-loop/*`
+  - `smart-control-loop/*`
   - `headless-parity/*`
   - `linux-ppl-container-build/*`
   - `belt-suspenders/*`

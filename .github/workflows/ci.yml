@@ -727,43 +727,64 @@ jobs:
           }
           Write-Host "Source project SHA verified: $actualSha"
 
-      - name: Validate Linux container parity assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          root="$GITHUB_WORKSPACE/consumer/Tooling/container-parity"
-          run_script="$root/runlabview-linux.sh"
-          dev_script="$root/devmode-linux.sh"
-          if [[ ! -f "$run_script" || ! -f "$dev_script" ]]; then
-            echo "Missing required container parity scripts in consumer repo:" >&2
-            echo "  expected: $run_script" >&2
-            echo "  expected: $dev_script" >&2
-            echo "Tip: ensure consumer_ref includes Tooling/container-parity assets." >&2
-            ls -la "$GITHUB_WORKSPACE/consumer/Tooling" >&2 || true
-            exit 127
-          fi
-
-      - name: Ensure NI Linux image availability
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! docker image inspect "$LINUX_LABVIEW_IMAGE" >/dev/null 2>&1; then
-            if ! docker pull "$LINUX_LABVIEW_IMAGE"; then
-              dockerfile_path="$GITHUB_WORKSPACE/docker/ni-lv-pwsh.Dockerfile"
-              if [[ -f "$dockerfile_path" ]]; then
-                echo "Preflight: pull failed; attempting local build from '$dockerfile_path'" >&2
-                docker build -t "$LINUX_LABVIEW_IMAGE" -f "$dockerfile_path" "$GITHUB_WORKSPACE"
-              else
-                echo "Unable to pull Linux image and local Dockerfile not found: $LINUX_LABVIEW_IMAGE" >&2
-                exit 1
-              fi
-            fi
-          fi
-
-      - name: Build Linux x64 PPL in NI Linux container
+      - name: Resolve Linux parity context via runner-cli
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $runnerCliProjectPath = Join-Path $consumerRoot 'Tooling/runner-cli/RunnerCli/RunnerCli.csproj'
+          if (-not (Test-Path -LiteralPath $runnerCliProjectPath -PathType Leaf)) {
+            throw "runner-cli project not found at '$runnerCliProjectPath'."
+          }
+
+          $contextPath = Join-Path $env:RUNNER_TEMP 'ppl-linux-parity-context.json'
+          $lvRelease = "$($env:LABVIEW_VERSION)q1"
+
+          $runnerCliContextArgs = @(
+            'run',
+            '--project', $runnerCliProjectPath,
+            '--',
+            'parity', 'context',
+            '--repo-root', $consumerRoot,
+            '--lv-release', $lvRelease,
+            '--output', $contextPath
+          )
+          & dotnet @runnerCliContextArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "runner-cli parity context failed with exit code $LASTEXITCODE."
+          }
+
+          "LINUX_PARITY_CONTEXT_PATH=$contextPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build Linux x64 PPL via runner-cli parity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $runnerCliProjectPath = Join-Path $consumerRoot 'Tooling/runner-cli/RunnerCli/RunnerCli.csproj'
+          if (-not (Test-Path -LiteralPath $runnerCliProjectPath -PathType Leaf)) {
+            throw "runner-cli project not found at '$runnerCliProjectPath'."
+          }
+
+          $contextPath = [string]$env:LINUX_PARITY_CONTEXT_PATH
+          if ([string]::IsNullOrWhiteSpace($contextPath) -or -not (Test-Path -LiteralPath $contextPath -PathType Leaf)) {
+            throw "Missing parity context from previous step. Expected LINUX_PARITY_CONTEXT_PATH='$contextPath'."
+          }
+
+          $runnerCliRunArgs = @(
+            'run',
+            '--project', $runnerCliProjectPath,
+            '--',
+            'parity', 'run',
+            '--mode', 'linux-container',
+            '--context', $contextPath,
+            '--build-spec'
+          )
+          & dotnet @runnerCliRunArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "runner-cli parity run failed with exit code $LASTEXITCODE."
+          }
+
           $linuxPplTargetRelativePath = $env:LINUX_PPL_OUTPUT_PATH
           if ($linuxPplTargetRelativePath.StartsWith('consumer/')) {
             $linuxPplTargetRelativePath = $linuxPplTargetRelativePath.Substring('consumer/'.Length)
@@ -771,62 +792,12 @@ jobs:
           $linuxPplTargetRelativePath = $linuxPplTargetRelativePath -replace '\\', '/'
           $linuxPplBuildRelativePath = 'resource/plugins/lv_icon.lvlibp'
 
-          $consumerWorkspace = Join-Path $env:GITHUB_WORKSPACE 'consumer'
-          $linuxContainerParityCommand = @'
-          set -euo pipefail
-          script_dir=/workspace/Tooling/container-parity
-          run_script="$script_dir/runlabview-linux.sh"
-          dev_script="$script_dir/devmode-linux.sh"
-          if [[ ! -f "$run_script" || ! -f "$dev_script" ]]; then
-            echo "Missing required container parity scripts in consumer repo:" >&2
-            echo "  expected: $run_script" >&2
-            echo "  expected: $dev_script" >&2
-            echo "Tip: ensure consumer_ref includes Tooling/container-parity assets." >&2
-            ls -la /workspace/Tooling >&2 || true
-            exit 127
-          fi
-          tmp_script_dir="$(mktemp -d)"
-          cleanup() { rm -rf "$tmp_script_dir"; }
-          trap cleanup EXIT
-          cp -a "$script_dir/." "$tmp_script_dir/"
-          while IFS= read -r -d '' script_file; do
-            sed -i 's/\r$//' "$script_file"
-          done < <(find "$tmp_script_dir" -type f -name '*.sh' -print0)
-          chmod +x "$tmp_script_dir/runlabview-linux.sh" "$tmp_script_dir/devmode-linux.sh"
-          "$tmp_script_dir/runlabview-linux.sh"
-          '@
-
-          docker run --rm `
-            -v "${consumerWorkspace}:/workspace" `
-            -w /workspace `
-            -e "LVIE_REPO_ROOT=/workspace" `
-            -e "WORKSPACE_ROOT=/workspace" `
-            -e "REPO_ROOT=/workspace" `
-            -e "LVIE_PROJECT_RELATIVE_PATH=lv_icon_editor.lvproj" `
-            -e "PROJECT_PATH_REL=lv_icon_editor.lvproj" `
-            -e "LVIE_PROJECT_PATH=/workspace/lv_icon_editor.lvproj" `
-            -e "PROJECT_PATH=/workspace/lv_icon_editor.lvproj" `
-            -e "TARGET_DIR_REL=Test/Templates" `
-            -e "CONTAINER_PARITY_EXCLUDE_FILES=Polymorphic Template.vi" `
-            -e "CONTAINER_PARITY_BUILD_SPEC=true" `
-            -e "CONTAINER_PARITY_BUILD_SPEC_NAME=Editor Packed Library" `
-            -e "CONTAINER_PARITY_TARGET_NAME=My Computer" `
-            -e "CONTAINER_PARITY_BUILD_OUTPUT_RELATIVE_PATH=$linuxPplBuildRelativePath" `
-            -e "CONTAINER_PARITY_LABVIEW_VERSION=$env:LABVIEW_VERSION" `
-            -e "LABVIEW_COMMUNITY_EDITION=true" `
-            "$env:LINUX_LABVIEW_IMAGE" `
-            bash -lc $linuxContainerParityCommand
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "Linux PPL build command failed with exit code $LASTEXITCODE"
-          }
-
-          $builtPplPath = Join-Path $consumerWorkspace $linuxPplBuildRelativePath
+          $builtPplPath = Join-Path $consumerRoot $linuxPplBuildRelativePath
           if (-not (Test-Path -LiteralPath $builtPplPath -PathType Leaf)) {
             throw "Linux build output not found at '$builtPplPath'."
           }
 
-          $targetPplPath = Join-Path $consumerWorkspace $linuxPplTargetRelativePath
+          $targetPplPath = Join-Path $consumerRoot $linuxPplTargetRelativePath
           if (-not ($builtPplPath.Equals($targetPplPath, [System.StringComparison]::OrdinalIgnoreCase))) {
             $targetDirectory = Split-Path -Path $targetPplPath -Parent
             if (-not [string]::IsNullOrWhiteSpace($targetDirectory) -and -not (Test-Path -LiteralPath $targetDirectory -PathType Container)) {
@@ -1956,6 +1927,7 @@ jobs:
           $versionHelper = Join-Path $consumerRoot 'Tooling/support/LabVIEWVersion.ps1'
           . $versionHelper
           $lvInfo = Get-LabVIEWVersionInfo -RepoRoot $consumerRoot
+          "raw=$($lvInfo.Raw)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "year=$($lvInfo.Year)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "minor=$($lvInfo.MinorRevision)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host ("Resolved LabVIEW version from source project .lvversion: {0}" -f $lvInfo.Raw)

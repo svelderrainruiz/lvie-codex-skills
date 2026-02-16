@@ -1,5 +1,5 @@
 {
-  "phase": "phase-4",
+  "track": "release-metrics",
   "name": "release-metrics-loop",
   "schema_version": "1.0",
   "cadence": "weekly",

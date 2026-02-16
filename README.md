@@ -279,7 +279,7 @@ Installer contract:
 - Pass workflow dispatch inputs (`key=value`) repeatedly:
   - `pwsh -NoProfile -File ./scripts/Invoke-AutonomousCiLoop.ps1 -WorkflowInput "ppl_build_lane=linux-container" -WorkflowInput "consumer_ref=develop"`
   - If `consumer_ref` is omitted, the loop now defaults it to `develop`.
-- Backend selection (phase-1 runner-cli adapter):
+- Backend selection (dispatch adapter foundation):
   - `-DispatchBackend auto|runner-cli|gh` (default `auto`)
   - `-RunQueryBackend auto|runner-cli|gh` (default `auto`)
   - In `auto`, loop prefers `runner-cli` when available and falls back to `gh`.

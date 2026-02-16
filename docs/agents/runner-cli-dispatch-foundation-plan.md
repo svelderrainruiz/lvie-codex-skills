@@ -1,4 +1,4 @@
-# Runner-CLI Phase 1 Integration Plan
+# Runner-CLI Dispatch Foundation Integration Plan
 
 Last updated: 2026-02-13
 Status: planned
@@ -6,7 +6,7 @@ Status: planned
 ## Objective
 Integrate `runner-cli` into this repo as a control-plane adapter for GitHub Actions dispatch and run lookup, while preserving current reliability through existing `gh` and REST fallback paths.
 
-## Scope (Phase 1 only)
+## Scope (Dispatch Foundation only)
 - Add a `runner-cli` execution path in:
   - `scripts/Invoke-AutonomousCiLoop.ps1`
   - `scripts/Invoke-ReleaseOrchestrator.ps1`
@@ -18,7 +18,7 @@ Integrate `runner-cli` into this repo as a control-plane adapter for GitHub Acti
   - head SHA correlation fields
   - summary fields already consumed in JSONL records
 
-## Non-Goals (Phase 1)
+## Non-Goals (Dispatch Foundation)
 - No workflow YAML structural changes.
 - No migration of package/build job logic to `runner-cli`.
 - No removal of `gh` or REST fallback behavior.
@@ -30,7 +30,7 @@ Integrate `runner-cli` into this repo as a control-plane adapter for GitHub Acti
 - Contracts already enforce dispatch telemetry and correlation behavior.
 
 ## Proposed Adapter Contract
-Define shared helper functions (script-local in each file for Phase 1):
+Define shared helper functions (script-local in each file for Dispatch Foundation):
 
 1) `Invoke-WorkflowDispatch`
 - Inputs:
@@ -68,7 +68,7 @@ Define shared helper functions (script-local in each file for Phase 1):
 - Returns boolean and probe output.
 
 ## Feature Toggle / Selection Rules
-Phase 1 selection order:
+Dispatch Foundation selection order:
 1. If `runner-cli` is available and not explicitly disabled, use it.
 2. If unavailable or failing, use `gh`.
 3. For orchestrator dispatch only: if `gh` fails/unavailable, use REST with token.
@@ -105,7 +105,7 @@ Suggested control flags:
   - `docs/agents/change-log.md` entry
 
 ## Acceptance Criteria
-- Phase 1 can dispatch and bind runs with `runner-cli` when available.
+- Dispatch Foundation can dispatch and bind runs with `runner-cli` when available.
 - Fallback path remains functional with no schema break in logs/artifacts.
 - Contract tests for new adapter invariants pass.
 - One runtime smoke cycle validates emitted telemetry parity.
@@ -113,7 +113,7 @@ Suggested control flags:
 ## Rollout Notes
 - Keep commit scope focused on control-plane behavior.
 - Avoid introducing hard dependency on `runner-cli` until fallback confidence is proven in CI.
-- Promote to Phase 2 only after observing stable behavior across multiple dispatch cycles.
+- Promote to Release State Contracts workstream only after observing stable behavior across multiple dispatch cycles.
 
 ## PR & Merge Checklist
 - [ ] Scripts updated: autonomous loop + release orchestrator

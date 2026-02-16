@@ -1,5 +1,5 @@
 {
-  "name": "phase-3-rollback-trigger",
+  "name": "release-rollback-trigger",
   "version": "1.0",
   "description": "Rollback contract for skill-layer release promotion failures.",
   "triggers": [

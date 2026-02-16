@@ -88,7 +88,7 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'prepare-vipb-linux:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target,\s*gather-release-notes,\s*resolve-labview-profile\]'
         $script:workflowContent | Should -Match 'build-vip-self-hosted:\s*[\s\S]*?runs-on:\s*(\[\s*self-hosted,\s*windows,\s*\$\{\{\s*needs\.resolve-labview-profile\.outputs\.source_runner_label_x64\s*\}\}\s*\]|(?:\r?\n\s*-\s*self-hosted\r?\n\s*-\s*windows\r?\n\s*-\s*\$\{\{\s*needs\.resolve-labview-profile\.outputs\.source_runner_label_x64\s*\}\}))'
         $script:workflowContent | Should -Match 'build-vip-self-hosted:\s*[\s\S]*?needs:\s*\[resolve-source-target,\s*build-ppl-container-windows-x64,\s*build-ppl-container-linux-x64,\s*build-ppl-selfhosted-windows,\s*prepare-vipb-linux,\s*run-lunit-smoke-x64,\s*resolve-labview-profile\]'
-        $script:workflowContent | Should -Not -Match 'build-vip-self-hosted:\s*[\s\S]*?needs:\s*\[[^\]]*run-lunit-smoke-lv2020x64-edge'
+        $script:workflowContent | Should -Not -Match 'run-lunit-smoke-lv2020x64-edge'
         $script:workflowContent | Should -Match 'install-vip-x86-self-hosted:\s*[\s\S]*?needs:\s*\[resolve-source-target,\s*build-vip-self-hosted,\s*resolve-labview-profile\]'
         $script:workflowContent | Should -Match 'ci-self-hosted-final-gate:\s*[\s\S]*?needs:\s*\[build-vip-self-hosted,\s*install-vip-x86-self-hosted\]'
     }

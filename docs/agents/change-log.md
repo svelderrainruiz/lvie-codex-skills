@@ -1,5 +1,11 @@
 # Agent Docs Change Log
 
+## 2026-02-16 — Issue #29 closeout guidance and promotion evidence workflow
+- Added issue #29 closeout workflow section to `quickstart.md` with stacked PR order, evidence fields, and `gh` evidence retrieval commands.
+- Added acceptance-to-evidence mapping for issue #29 in `release-gates.md`, including required promotion artifact and summary fields.
+- Added promotion-only 5-green gate operational guidance references for agent evidence capture.
+- Added optional SHA pin policy guidance references for closeout evidence consistency.
+
 ## 2026-02-16 — Deterministic platform architecture and M1 contract freeze
 - Added architecture ADR: `docs/architecture/adr-0001-deterministic-build-platform.md`.
 - Added M1 provider/bitness contract doc: `docs/architecture/runner-cli-provider-contract.md`.

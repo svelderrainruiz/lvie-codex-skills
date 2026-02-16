@@ -17,6 +17,16 @@ This runbook defines how to collect and review release metrics for consumer pari
 3. Document top failure causes and likely flaky-signal candidates.
 4. Open concrete action items for issues that recur across multiple runs.
 
+## Shadow Promotion 5-Green Review
+
+1. Use `.github/workflows/shadow-promotion-gate.yml` outputs for promotion-candidate PRs.
+2. Review `shadow-promotion-state-<run_id>` artifact and confirm:
+   - `threshold=5`
+   - `consecutive_green_count>=5`
+   - `promotion_ready=true`
+3. Record `reset_reason` and `evaluated_run_ids` in promotion evidence comments.
+4. If `promotion_ready=false`, keep lane in shadow and create follow-up remediation work before re-attempting promotion.
+
 ## Continuous Improvement Actions
 
 1. Prioritize fixes that move repeated `no-go` outcomes to `go`.

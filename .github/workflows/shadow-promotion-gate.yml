@@ -1,0 +1,206 @@
+name: shadow-promotion-gate
+
+on:
+  pull_request:
+    paths:
+      - 'contracts/build-lane-matrix.json'
+      - '.github/workflows/ci.yml'
+      - 'schemas/control-plane-green-run.schema.json'
+      - 'schemas/shadow-promotion-state.schema.json'
+      - 'scripts/Invoke-ShadowPromotionEvaluation.ps1'
+      - 'scripts/Invoke-ShadowPromotionGate.ps1'
+      - 'tests/ShadowPromotionContract.Tests.ps1'
+      - 'docs/release-governance/**'
+      - 'docs/agents/release-gates.md'
+      - '.github/workflows/shadow-promotion-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  shadow-promotion-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        name: Detect linux x86 shadow promotion attempt
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Get-FileAtRevision {
+            param(
+              [Parameter(Mandatory = $true)]
+              [string]$Revision,
+              [Parameter(Mandatory = $true)]
+              [string]$Path
+            )
+
+            if ([string]::IsNullOrWhiteSpace($Revision)) {
+              return ''
+            }
+
+            $content = git show "$Revision`:$Path" 2>$null
+            if ($LASTEXITCODE -ne 0) {
+              return ''
+            }
+            return (@($content) -join [Environment]::NewLine)
+          }
+
+          function ConvertTo-Bool {
+            param(
+              [Parameter(Mandatory = $false)]
+              [object]$Value
+            )
+
+            if ($null -eq $Value) {
+              return $false
+            }
+
+            $text = ([string]$Value).Trim().ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($text)) {
+              return $false
+            }
+            return @('1', 'true', 'yes', 'y', 'on') -contains $text
+          }
+
+          $laneId = 'build-ppl-container-linux-x86-shadow'
+          $reasons = [System.Collections.Generic.List[string]]::new()
+
+          $baseMatrixRaw = Get-FileAtRevision -Revision $env:BASE_SHA -Path 'contracts/build-lane-matrix.json'
+          $headMatrixRaw = Get-Content -LiteralPath 'contracts/build-lane-matrix.json' -Raw -ErrorAction Stop
+
+          if (-not [string]::IsNullOrWhiteSpace($baseMatrixRaw)) {
+            $baseMatrix = $baseMatrixRaw | ConvertFrom-Json -ErrorAction Stop
+            $headMatrix = $headMatrixRaw | ConvertFrom-Json -ErrorAction Stop
+            $baseLane = @($baseMatrix.lanes | Where-Object { [string]$_.lane_id -eq $laneId }) | Select-Object -First 1
+            $headLane = @($headMatrix.lanes | Where-Object { [string]$_.lane_id -eq $laneId }) | Select-Object -First 1
+
+            if ($null -ne $baseLane -and $null -ne $headLane) {
+              $baseRole = [string]$baseLane.role
+              $headRole = [string]$headLane.role
+              $baseRequired = ConvertTo-Bool -Value $baseLane.required
+              $headRequired = ConvertTo-Bool -Value $headLane.required
+              $baseIsShadowState = ($baseRole -eq 'shadow' -or -not $baseRequired)
+              $headIsRequiredState = ($headRole -eq 'required' -or $headRequired)
+
+              if ($baseIsShadowState -and $headIsRequiredState) {
+                $reasons.Add('lane-matrix-shadow-to-required')
+              }
+            }
+          }
+
+          $shadowOptionalPattern = 'build-ppl-container-linux-x86-shadow:\s*[\s\S]*?continue-on-error:\s*true'
+          $baseCiRaw = Get-FileAtRevision -Revision $env:BASE_SHA -Path '.github/workflows/ci.yml'
+          $headCiRaw = Get-Content -LiteralPath '.github/workflows/ci.yml' -Raw -ErrorAction Stop
+          if (-not [string]::IsNullOrWhiteSpace($baseCiRaw)) {
+            $baseOptional = [regex]::IsMatch($baseCiRaw, $shadowOptionalPattern)
+            $headOptional = [regex]::IsMatch($headCiRaw, $shadowOptionalPattern)
+            if ($baseOptional -and -not $headOptional) {
+              $reasons.Add('ci-shadow-lane-became-blocking')
+            }
+          }
+
+          $promotionAttempt = $reasons.Count -gt 0
+          $promotionAttemptText = if ($promotionAttempt) { 'true' } else { 'false' }
+          $reasonText = if ($reasons.Count -gt 0) { [string]::Join(',', $reasons) } else { '<none>' }
+
+          "promotion_attempt=$promotionAttemptText" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "detection_reason=$reasonText" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          @(
+            '## Shadow Promotion Attempt Detection'
+            ''
+            "- promotion_attempt: $promotionAttemptText"
+            "- detection_reason: $reasonText"
+          ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - id: collect
+        name: Collect shadow metrics and evaluate promotion readiness
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $workspaceRoot = $env:GITHUB_WORKSPACE
+          $outputRoot = Join-Path $env:RUNNER_TEMP 'shadow-promotion-gate'
+          $metricsDir = Join-Path $outputRoot 'metrics'
+          $statePath = Join-Path $outputRoot 'shadow-promotion-state.json'
+          $scratchDir = Join-Path $outputRoot 'downloads'
+
+          & "$workspaceRoot/scripts/Invoke-ShadowPromotionGate.ps1" `
+            -OwnerRepo $env:GITHUB_REPOSITORY `
+            -WorkflowFile 'ci.yml' `
+            -Branch 'main' `
+            -MinConsecutiveGreens 5 `
+            -MaxRunsToScan 40 `
+            -ShadowLaneName 'build-ppl-container-linux-x86-shadow' `
+            -MetricsDirectory $metricsDir `
+            -StateOutputPath $statePath `
+            -ScratchDirectory $scratchDir
+
+          if (-not (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+            throw "Expected shadow promotion state file was not generated: $statePath"
+          }
+
+          "state_path=$statePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - id: summary
+        name: Publish shadow promotion state summary
+        shell: pwsh
+        env:
+          STATE_PATH: ${{ steps.collect.outputs.state_path }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $state = Get-Content -LiteralPath $env:STATE_PATH -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+
+          $promotionReadyText = if ($state.promotion_ready) { 'true' } else { 'false' }
+          $evaluatedRunIds = @($state.evaluated_runs | ForEach-Object { [string]$_.run_id }) -join ','
+          if ([string]::IsNullOrWhiteSpace($evaluatedRunIds)) {
+            $evaluatedRunIds = '<none>'
+          }
+
+          "threshold=$($state.threshold)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "consecutive_green_count=$($state.consecutive_green_count)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "promotion_ready=$promotionReadyText" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "reset_reason=$($state.reset_reason)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "evaluated_run_ids=$evaluatedRunIds" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+          @(
+            '## Shadow Promotion State'
+            ''
+            "- threshold: $($state.threshold)"
+            "- consecutive green count: $($state.consecutive_green_count)"
+            "- promotion ready: $promotionReadyText"
+            "- reset reason: $($state.reset_reason)"
+            "- evaluated run IDs: $evaluatedRunIds"
+          ) -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - name: Upload shadow promotion state artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shadow-promotion-state-${{ github.run_id }}
+          path: ${{ steps.collect.outputs.state_path }}
+          if-no-files-found: error
+
+      - name: Enforce five-green gate for promotion attempts
+        if: ${{ steps.detect.outputs.promotion_attempt == 'true' && steps.summary.outputs.promotion_ready != 'true' }}
+        shell: pwsh
+        run: |
+          throw "Shadow promotion gate blocked: promotion attempt requires 5 consecutive qualifying greens. See shadow-promotion-state artifact."
+
+      - name: Record non-blocking state for non-promotion changes
+        if: ${{ steps.detect.outputs.promotion_attempt != 'true' }}
+        shell: pwsh
+        run: |
+          Write-Host "No promotion attempt detected; shadow promotion state published for visibility only."

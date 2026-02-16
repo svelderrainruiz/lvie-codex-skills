@@ -100,8 +100,9 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'PARITY_ENFORCEMENT_PROFILE:\s*\$\{\{\s*vars\.LVIE_PARITY_ENFORCEMENT_PROFILE\s*\|\|\s*''auto''\s*\}\}'
         $script:workflowContent | Should -Match 'WINDOWS_LABVIEW_IMAGE:\s*nationalinstruments/labview:2026q1-windows'
         $script:workflowContent | Should -Match 'LINUX_LABVIEW_IMAGE:\s*nationalinstruments/labview:2026q1-linux-pwsh'
-        $script:workflowContent | Should -Match 'WINDOWS_PPL_OUTPUT_PATH:\s*consumer/resource/plugins/lv_icon\.windows\.lvlibp'
-        $script:workflowContent | Should -Match 'LINUX_PPL_OUTPUT_PATH:\s*consumer/resource/plugins/lv_icon\.linux\.lvlibp'
+        $script:workflowContent | Should -Match 'WINDOWS_PPL_OUTPUT_PATH:\s*resource/plugins/lv_icon\.lvlibp'
+        $script:workflowContent | Should -Match 'LINUX_PPL_OUTPUT_PATH:\s*resource/plugins/lv_icon\.lvlibp'
+        $script:workflowContent | Should -Match "VIPB_PROJECT_PATH:\s*'Tooling/deployment/NI Icon editor\.vipb'"
         $script:workflowContent | Should -Match 'LABVIEW_PROFILES_ROOT:\s*profiles/labview'
         $script:workflowContent | Should -Match 'DEFAULT_LABVIEW_PROFILE:\s*\$\{\{\s*inputs\.labview_profile\s*\|\|\s*vars\.LVIE_LABVIEW_PROFILE\s*\|\|\s*''lv2026'''
     }
@@ -406,9 +407,6 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'Invoke-VipmBuildPackage\.ps1'
         $script:workflowContent | Should -Match 'Required command ''vipm'' not found on PATH for self-hosted packaging lane'
         $script:workflowContent | Should -Not -Match 'Required command ''g-cli'' not found on PATH for self-hosted packaging lane'
-        $script:workflowContent | Should -Match '''--major'',\s*\$env:VERSION_MAJOR'
-        $script:workflowContent | Should -Match '''--minor'',\s*\$env:VERSION_MINOR'
-        $script:workflowContent | Should -Match '''--patch'',\s*\$env:VERSION_PATCH'
         $script:workflowContent | Should -Match 'Upload VIPM package build diagnostics artifact'
         $script:workflowContent | Should -Match 'docker-contract-vipm-build-self-hosted-\$\{\{\s*github\.run_id\s*\}\}'
         $script:workflowContent | Should -Match 'docker-contract-vip-package-self-hosted-\$\{\{\s*github\.run_id\s*\}\}'

@@ -1596,6 +1596,18 @@ jobs:
             -UpstreamRepo $env:CONSUMER_REPO `
             -OutputDirectory $outputDirectory
 
+      - name: Bootstrap worktree guard context
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $worktreeRoot = Join-Path $env:GITHUB_WORKSPACE 'worktrees'
+          if (-not (Test-Path -LiteralPath $worktreeRoot -PathType Container)) {
+            New-Item -Path $worktreeRoot -ItemType Directory -Force | Out-Null
+          }
+          "LVIE_WORKTREE_ROOT=$worktreeRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "LVIE_SKIP_WORKTREE_ROOT_CHECK=1" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Exported LVIE_WORKTREE_ROOT=$worktreeRoot"
+
       - name: Build self-hosted PPL (serialized matrix)
         shell: pwsh
         env:

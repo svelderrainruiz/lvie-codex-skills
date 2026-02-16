@@ -724,60 +724,64 @@ jobs:
           }
           Write-Host "Source project SHA verified: $actualSha"
 
-      - name: Validate Windows container parity assets
+      - name: Resolve Windows parity context via runner-cli
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
-          $requiredParityScript = Join-Path $consumerRoot 'Tooling/container-parity/runlabview-windows.ps1'
-          if (-not (Test-Path -LiteralPath $requiredParityScript -PathType Leaf)) {
-            throw "Missing required source project script '$requiredParityScript'."
+          $runnerCliProjectPath = Join-Path $consumerRoot 'Tooling/runner-cli/RunnerCli/RunnerCli.csproj'
+          if (-not (Test-Path -LiteralPath $runnerCliProjectPath -PathType Leaf)) {
+            throw "runner-cli project not found at '$runnerCliProjectPath'."
           }
 
-          $projectCandidates = @(Get-ChildItem -Path $consumerRoot -Recurse -File -Filter 'lv_icon_editor.lvproj')
-          if ($projectCandidates.Count -eq 0) {
-            throw "Unable to locate 'lv_icon_editor.lvproj' under '$consumerRoot'."
-          }
-          if ($projectCandidates.Count -gt 1) {
-            $candidateList = ($projectCandidates | ForEach-Object { $_.FullName }) -join '; '
-            throw "Expected exactly one 'lv_icon_editor.lvproj' under '$consumerRoot', found $($projectCandidates.Count): $candidateList"
-          }
+          $contextPath = Join-Path $env:RUNNER_TEMP 'ppl-windows-parity-context.json'
+          $lvRelease = "$($env:LABVIEW_VERSION)q1"
 
-          $projectPath = $projectCandidates[0].FullName
-          $projectDirectory = Split-Path -Path $projectPath -Parent
-          $lvversionPath = Join-Path $projectDirectory '.lvversion'
-          if (-not (Test-Path -LiteralPath $lvversionPath -PathType Leaf)) {
-            throw "Missing '.lvversion' alongside 'lv_icon_editor.lvproj'. Expected: '$lvversionPath'."
-          }
-
-          $lvversionRaw = (Get-Content -LiteralPath $lvversionPath -Raw -ErrorAction Stop).Trim()
-          if ($lvversionRaw -notmatch '^(?<major>\d+)\.(?<minor>\d+)$') {
-            throw ".lvversion value '$lvversionRaw' is invalid. Expected numeric major.minor format (for example '26.0')."
-          }
-          $lvMajor = [int]$Matches['major']
-          if ($lvMajor -lt 20) {
-            throw ".lvversion '$lvversionRaw' is unsupported. Minimum supported LabVIEW version is 20.0."
+          $runnerCliContextArgs = @(
+            'run',
+            '--project', $runnerCliProjectPath,
+            '--',
+            'parity', 'context',
+            '--repo-root', $consumerRoot,
+            '--lv-release', $lvRelease,
+            '--output', $contextPath
+          )
+          & dotnet @runnerCliContextArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "runner-cli parity context failed with exit code $LASTEXITCODE."
           }
 
-          $projectRelativePath = [System.IO.Path]::GetRelativePath($consumerRoot, $projectPath).Replace('\', '/')
-          $projectRelativePathWindows = $projectRelativePath -replace '/', '\'
-          $projectContainerPath = "C:\workspace\$projectRelativePathWindows"
+          "WINDOWS_PARITY_CONTEXT_PATH=$contextPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-          "WINDOWS_PROJECT_RELATIVE_PATH=$projectRelativePathWindows" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "WINDOWS_PROJECT_CONTAINER_PATH=$projectContainerPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-          Write-Host "Resolved Windows parity project path: $projectRelativePathWindows"
-          Write-Host "Validated .lvversion at: $lvversionPath"
-
-      - name: Build Windows x64 PPL in NI Windows container
+      - name: Build Windows x64 PPL via runner-cli parity
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $projectRelativePath = [string]$env:WINDOWS_PROJECT_RELATIVE_PATH
-          $projectContainerPath = [string]$env:WINDOWS_PROJECT_CONTAINER_PATH
-          if ([string]::IsNullOrWhiteSpace($projectRelativePath) -or [string]::IsNullOrWhiteSpace($projectContainerPath)) {
-            throw "Missing Windows project path environment from validation step. Expected WINDOWS_PROJECT_RELATIVE_PATH and WINDOWS_PROJECT_CONTAINER_PATH."
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $runnerCliProjectPath = Join-Path $consumerRoot 'Tooling/runner-cli/RunnerCli/RunnerCli.csproj'
+          if (-not (Test-Path -LiteralPath $runnerCliProjectPath -PathType Leaf)) {
+            throw "runner-cli project not found at '$runnerCliProjectPath'."
           }
+
+          $contextPath = [string]$env:WINDOWS_PARITY_CONTEXT_PATH
+          if ([string]::IsNullOrWhiteSpace($contextPath) -or -not (Test-Path -LiteralPath $contextPath -PathType Leaf)) {
+            throw "Missing parity context from previous step. Expected WINDOWS_PARITY_CONTEXT_PATH='$contextPath'."
+          }
+
+          $runnerCliRunArgs = @(
+            'run',
+            '--project', $runnerCliProjectPath,
+            '--',
+            'parity', 'run',
+            '--mode', 'windows-container',
+            '--context', $contextPath,
+            '--build-spec'
+          )
+          & dotnet @runnerCliRunArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "runner-cli parity run failed with exit code $LASTEXITCODE."
+          }
+
           $windowsPplTargetRelativePath = $env:WINDOWS_PPL_OUTPUT_PATH
           if ($windowsPplTargetRelativePath.StartsWith('consumer/')) {
             $windowsPplTargetRelativePath = $windowsPplTargetRelativePath.Substring('consumer/'.Length)
@@ -785,44 +789,12 @@ jobs:
           $windowsPplTargetRelativePath = $windowsPplTargetRelativePath -replace '/', '\'
           $windowsPplBuildRelativePath = 'resource\plugins\lv_icon.lvlibp'
 
-          docker image inspect "$env:WINDOWS_LABVIEW_IMAGE" *> $null
-          if ($LASTEXITCODE -ne 0) {
-            docker pull "$env:WINDOWS_LABVIEW_IMAGE"
-          }
-          if ($LASTEXITCODE -ne 0) {
-            throw "Unable to pull/access Windows LabVIEW image '$env:WINDOWS_LABVIEW_IMAGE'. Ensure the image exists and runner authentication is configured."
-          }
-
-          $consumerWorkspace = Join-Path $env:GITHUB_WORKSPACE 'consumer'
-          docker run --rm `
-            -v "${consumerWorkspace}:C:\workspace" `
-            -e LVIE_REPO_ROOT=C:\workspace `
-            -e WORKSPACE_ROOT=C:\workspace `
-            -e REPO_ROOT=C:\workspace `
-            -e "LVIE_PROJECT_RELATIVE_PATH=$projectRelativePath" `
-            -e "PROJECT_PATH_REL=$projectRelativePath" `
-            -e "LVIE_PROJECT_PATH=$projectContainerPath" `
-            -e "PROJECT_PATH=$projectContainerPath" `
-            -e "TARGET_DIR_REL=Test\Templates" `
-            -e "CONTAINER_PARITY_EXCLUDE_FILES=Polymorphic Template.vi" `
-            -e "CONTAINER_PARITY_BUILD_SPEC=true" `
-            -e "CONTAINER_PARITY_BUILD_SPEC_NAME=Editor Packed Library" `
-            -e "CONTAINER_PARITY_TARGET_NAME=My Computer" `
-            -e "CONTAINER_PARITY_BUILD_OUTPUT_RELATIVE_PATH=$windowsPplBuildRelativePath" `
-            -e "CONTAINER_PARITY_LABVIEW_VERSION=$env:LABVIEW_VERSION" `
-            "$env:WINDOWS_LABVIEW_IMAGE" `
-            powershell -NoProfile -ExecutionPolicy Bypass -File C:\workspace\Tooling\container-parity\runlabview-windows.ps1
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "Windows PPL build command failed with exit code $LASTEXITCODE"
-          }
-
-          $builtPplPath = Join-Path $consumerWorkspace ($windowsPplBuildRelativePath -replace '\\', '/')
+          $builtPplPath = Join-Path $consumerRoot ($windowsPplBuildRelativePath -replace '\\', '/')
           if (-not (Test-Path -LiteralPath $builtPplPath -PathType Leaf)) {
             throw "Windows build output not found at '$builtPplPath'."
           }
 
-          $targetPplPath = Join-Path $consumerWorkspace ($windowsPplTargetRelativePath -replace '\\', '/')
+          $targetPplPath = Join-Path $consumerRoot ($windowsPplTargetRelativePath -replace '\\', '/')
           if (-not ($builtPplPath.Equals($targetPplPath, [System.StringComparison]::OrdinalIgnoreCase))) {
             $targetDirectory = Split-Path -Path $targetPplPath -Parent
             if (-not [string]::IsNullOrWhiteSpace($targetDirectory) -and -not (Test-Path -LiteralPath $targetDirectory -PathType Container)) {

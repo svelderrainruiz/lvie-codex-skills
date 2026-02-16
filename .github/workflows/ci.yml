@@ -2314,16 +2314,30 @@ jobs:
               throw "LabVIEW $labviewYear (32-bit) is still running after LabVIEWCLI close attempts; aborting native x86 PPL build for process isolation."
             }
 
-            & "$consumerRoot/.github/actions/build-lvlibp/BuildProjectSpec.ps1" `
-              -LabVIEWVersion $labviewVersionRaw `
-              -SupportedBitness 32 `
-              -RepoRoot "$consumerRoot" `
-              -Major $env:VERSION_MAJOR `
-              -Minor $env:VERSION_MINOR `
-              -Patch $env:VERSION_PATCH `
-              -Build $env:VERSION_BUILD `
-              -Commit $env:VERSION_COMMIT `
-              -SkipWorktreeRootCheck
+            $runnerCliProjectPath = Join-Path $consumerRoot 'Tooling/runner-cli/RunnerCli/RunnerCli.csproj'
+            if (-not (Test-Path -LiteralPath $runnerCliProjectPath -PathType Leaf)) {
+              throw "runner-cli project not found at '$runnerCliProjectPath'."
+            }
+
+            $runnerCliArgs = @(
+              'run',
+              '--project', $runnerCliProjectPath,
+              '--',
+              'ppl', 'build',
+              '--repo-root', $consumerRoot,
+              '--labview-version', $labviewVersionRaw,
+              '--supported-bitness', '32',
+              '--major', $env:VERSION_MAJOR,
+              '--minor', $env:VERSION_MINOR,
+              '--patch', $env:VERSION_PATCH,
+              '--build', $env:VERSION_BUILD,
+              '--commit', $env:VERSION_COMMIT,
+              '--skip-worktree-root-check'
+            )
+            & dotnet @runnerCliArgs
+            if ($LASTEXITCODE -ne 0) {
+              throw "runner-cli ppl build failed with exit code $LASTEXITCODE."
+            }
 
             Invoke-LabVIEWCliClose -LabVIEWYear $labviewYear -Bitness '32'
           } finally {

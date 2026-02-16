@@ -1,4 +1,4 @@
-# Detailed Checklist Comment Draft — Release Control Plane Modernization (Phased)
+# Detailed Checklist Comment Draft — Release Control Plane Modernization Roadmap
 
 Use this as the first comment under the umbrella issue body.
 
@@ -13,12 +13,12 @@ Create a reliable, auditable release control plane in `labview-icon-editor-codex
 - Token-first orchestration model (short-lived credentials, no persistent host login requirement).
 - Contract-driven gate evaluation for run status, failed jobs, and required artifacts.
 - Machine-readable release state outputs (JSON) alongside markdown operator view.
-- Phase tracking and governance conventions for rollout.
+- Workstream tracking and governance conventions for rollout.
 
 ## Non-goals
 - Replacing all consumer CI logic in `labview-icon-editor`.
 - Introducing new release channels beyond canary/stable in this initiative.
-- Building a UI dashboard in this phase set.
+- Building a UI dashboard in this roadmap set.
 
 ---
 
@@ -30,7 +30,7 @@ Create a reliable, auditable release control plane in `labview-icon-editor-codex
 
 ---
 
-## Phase 1 — Auth Boundary + Safe Dispatch Foundation
+## Dispatch/Auth Foundation
 **Goal:** enforce separation of Git operations from GitHub-auth-required operations.
 
 ### Deliverables
@@ -46,7 +46,7 @@ Create a reliable, auditable release control plane in `labview-icon-editor-codex
 
 ---
 
-## Phase 2 — Machine-Verifiable Release State
+## Release State Contracts
 **Goal:** replace markdown-only status interpretation with canonical JSON evidence.
 
 ### Deliverables
@@ -62,7 +62,7 @@ Create a reliable, auditable release control plane in `labview-icon-editor-codex
 
 ---
 
-## Phase 3 — Promotion + Rollback Controls
+## Release Governance
 **Goal:** improve operational resilience post-dispatch.
 
 ### Deliverables
@@ -72,15 +72,15 @@ Create a reliable, auditable release control plane in `labview-icon-editor-codex
 
 ### Acceptance Criteria
 - [ ] Canary failure can be rolled back with documented procedure and evidence.
-- [ ] Stable promotion requires explicit phase gate checks.
+- [ ] Stable promotion requires explicit governance gate checks.
 
 ---
 
-## Phase 4 — Governance Metrics and Continuous Improvement
-**Goal:** use phase data to reduce failure rates and improve lead time.
+## Release Metrics & Improvement
+**Goal:** use release metrics data to reduce failure rates and improve lead time.
 
 ### Deliverables
-- [ ] Capture lead time by phase (candidate detected → dispatched → published).
+- [ ] Capture lead time by workstream (candidate detected → dispatched → published).
 - [ ] Track top gate failure causes and flaky job signals.
 - [ ] Add periodic review checklist (weekly/biweekly).
 
@@ -110,16 +110,16 @@ Create a reliable, auditable release control plane in `labview-icon-editor-codex
   - **Rationale:** Deterministic machine checks and auditable history.
 
 ## Work Tracking Checklist
-- [ ] Create Phase 1 PR(s)
-- [ ] Create Phase 2 PR(s)
-- [ ] Create Phase 3 PR(s)
-- [ ] Create Phase 4 PR(s)
+- [ ] Create Dispatch/Auth Foundation PR(s)
+- [ ] Create Release State Contracts PR(s)
+- [ ] Create Release Governance PR(s)
+- [ ] Create Release Metrics & Improvement PR(s)
 - [ ] Attach all related PRs/workflow runs to this issue
 
 ## Suggested Labels
-`release-control-plane`, `phase-1`, `phase-2`, `phase-3`, `phase-4`, `blocker`, `decision-needed`, `security`
+`release-control-plane`, `dispatch-foundation`, `release-state`, `release-governance`, `release-metrics`, `blocker`, `decision-needed`, `security`
 
 ## Definition of Done (Initiative)
-- [ ] Phases 1–2 completed and verified in a real release run.
-- [ ] Phase 3 controls documented and smoke-tested.
-- [ ] Phase 4 metrics collection active with first review performed.
+- [ ] Dispatch/Auth Foundation and Release State Contracts completed and verified in a real release run.
+- [ ] Release Governance controls documented and smoke-tested.
+- [ ] Release metrics collection active with first review performed.

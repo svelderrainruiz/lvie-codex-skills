@@ -1,11 +1,11 @@
 # Agent Docs Change Log
 
-## 2026-02-13 — Runner-CLI phase 1 planning
-- Added `runner-cli-phase1-plan.md` to define control-plane integration scope.
-- Locked phase 1 to dispatch/run-query adapters with preserved `gh`/REST fallback behavior.
+## 2026-02-13 — Runner-CLI dispatch foundation planning
+- Added `runner-cli-dispatch-foundation-plan.md` to define control-plane integration scope.
+- Locked dispatch foundation scope to dispatch/run-query adapters with preserved `gh`/REST fallback behavior.
 - Documented acceptance criteria, validation gates, and non-goals to prevent schema-breaking drift.
 
-## 2026-02-13 — Phase B backfill from run evidence
+## 2026-02-13 — Run evidence backfill
 - Updated `quickstart.md` with 3-run outcomes table and canonical release-plan references.
 - Updated `release-gates.md` with explicit evidence backfill table for runs:
   - 22002791381

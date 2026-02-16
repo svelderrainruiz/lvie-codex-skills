@@ -1,5 +1,5 @@
 {
-  "name": "phase-3-promotion-policy",
+  "name": "release-promotion-policy",
   "version": "1.0",
   "description": "Promotion lane contract from canary to stable for skill-layer releases.",
   "lanes": [

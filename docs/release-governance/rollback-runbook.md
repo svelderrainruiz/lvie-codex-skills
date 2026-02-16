@@ -1,4 +1,4 @@
-# Rollback Runbook (Phase 3)
+# Release Rollback Runbook
 
 Last validated: 2026-02-13
 

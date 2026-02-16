@@ -1,0 +1,17 @@
+{
+  "name": "lvie-smart-control-loop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript control-plane for deterministic release and CI loop orchestration",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node dist/index.js self-check"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

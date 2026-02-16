@@ -19,145 +19,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
 
-function Resolve-OwnerRepo {
-  param(
-    [Parameter(Mandatory = $false)]
-    [string]$Value
-  )
+. (Join-Path $PSScriptRoot 'Invoke-ControlPlaneBridge.ps1')
 
-  if (-not [string]::IsNullOrWhiteSpace($Value)) {
-    return $Value.Trim()
-  }
-
-  if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)) {
-    return [string]$env:GITHUB_REPOSITORY
-  }
-
-  try {
-    $originUrl = (git remote get-url origin).Trim()
-    if ($originUrl -match 'github\.com[:/](?<repo>[^/]+/[^/.]+?)(?:\.git)?$') {
-      return [string]$Matches.repo
-    }
-  } catch {
-  }
-
-  throw "OwnerRepo was not provided and could not be inferred. Pass -OwnerRepo <owner/repo>."
+$payload = [ordered]@{
+  RunId = $RunId
+  OwnerRepo = $OwnerRepo
+  ReleaseTag = $ReleaseTag
+  OutputDir = $OutputDir
+  RollbackTriggered = $RollbackTriggered
+  GitHubToken = $GitHubToken
 }
 
-$OwnerRepo = Resolve-OwnerRepo -Value $OwnerRepo
-
-if ([string]::IsNullOrWhiteSpace($OutputDir)) {
-  $OutputDir = Join-Path (Join-Path $PSScriptRoot '..') 'artifacts/release-metrics'
-}
-
-if (-not (Test-Path -Path $OutputDir -PathType Container)) {
-  New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
-}
-
-$runUrl = "https://api.github.com/repos/$OwnerRepo/actions/runs/$RunId"
-$jobsUrl = "https://api.github.com/repos/$OwnerRepo/actions/runs/$RunId/jobs?per_page=100"
-$artifactsUrl = "https://api.github.com/repos/$OwnerRepo/actions/runs/$RunId/artifacts?per_page=100"
-
-function Get-GitHubJson {
-  param(
-    [string]$Path
-  )
-
-  $gh = Get-Command gh -ErrorAction SilentlyContinue
-  if ($gh) {
-    $ghOutput = & gh api $Path
-    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($ghOutput)) {
-      return ($ghOutput | ConvertFrom-Json -ErrorAction Stop)
-    }
-  }
-
-  $headers = @{ 'User-Agent' = 'codex-release-metrics' }
-  $token = if ($GitHubToken) { $GitHubToken } elseif ($env:GH_TOKEN) { $env:GH_TOKEN } elseif ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $null }
-  if (-not [string]::IsNullOrWhiteSpace($token)) {
-    $headers.Authorization = "Bearer $token"
-    $headers.Accept = 'application/vnd.github+json'
-    $headers.'X-GitHub-Api-Version' = '2022-11-28'
-  }
-
-  return (Invoke-RestMethod -Uri ("https://api.github.com/{0}" -f $Path) -Headers $headers)
-}
-
-$run = Get-GitHubJson -Path "repos/$OwnerRepo/actions/runs/$RunId"
-$jobs = Get-GitHubJson -Path "repos/$OwnerRepo/actions/runs/$RunId/jobs?per_page=100"
-$artifacts = Get-GitHubJson -Path "repos/$OwnerRepo/actions/runs/$RunId/artifacts?per_page=100"
-
-if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
-  $manifestPath = Join-Path (Join-Path $PSScriptRoot '..') 'manifest.json'
-  if (-not (Test-Path -Path $manifestPath -PathType Leaf)) {
-    throw "manifest.json not found: $manifestPath"
-  }
-
-  $manifest = Get-Content -Raw -Path $manifestPath | ConvertFrom-Json
-  $ReleaseTag = "v$($manifest.version)"
-}
-
-$requiredArtifacts = @(
-  'docker-contract-ppl-bundle-windows-x64-',
-  'docker-contract-ppl-bundle-linux-x64-',
-  'docker-contract-vip-package-self-hosted-'
-)
-
-$observedArtifacts = @($artifacts.artifacts | ForEach-Object { $_.name })
-$missingArtifacts = @()
-foreach ($requiredArtifactPrefix in $requiredArtifacts) {
-  $matchFound = $false
-  foreach ($artifactName in $observedArtifacts) {
-    if ($artifactName.StartsWith($requiredArtifactPrefix, [System.StringComparison]::Ordinal)) {
-      $matchFound = $true
-      break
-    }
-  }
-
-  if (-not $matchFound) {
-    $missingArtifacts += $requiredArtifactPrefix
-  }
-}
-$failedJobs = @($jobs.jobs | Where-Object {
-    $_.conclusion -in @('failure', 'cancelled', 'timed_out', 'startup_failure', 'action_required')
-  })
-
-$createdAt = [datetimeoffset]::Parse($run.created_at)
-$updatedAt = [datetimeoffset]::Parse($run.updated_at)
-$durationMinutes = [math]::Max(0, [math]::Round(($updatedAt - $createdAt).TotalMinutes, 2))
-
-$topFailureCauses = @($failedJobs | Group-Object -Property conclusion | Sort-Object -Property Count -Descending | Select-Object -First 3 | ForEach-Object { "$($_.Name):$($_.Count)" })
-
-$isCompleted = $run.status -eq 'completed'
-$isSuccess = $run.conclusion -eq 'success'
-$isGo = $isCompleted -and $isSuccess -and $failedJobs.Count -eq 0 -and $missingArtifacts.Count -eq 0
-$gateOutcome = if ($isGo) { 'go' } else { 'no-go' }
-
-$payload = [pscustomobject]@{
-  schema_version = '1.0'
-  generated_utc = (Get-Date).ToUniversalTime().ToString('o')
-  owner_repo = $OwnerRepo
-  consumer_run_id = $RunId
-  consumer_run_url = "https://github.com/$OwnerRepo/actions/runs/$RunId"
-  release_tag = $ReleaseTag
-  run_status = $run.status
-  run_conclusion = if ($null -eq $run.conclusion) { 'pending' } else { [string]$run.conclusion }
-  duration_minutes = $durationMinutes
-  failed_job_count = $failedJobs.Count
-  missing_required_artifact_count = $missingArtifacts.Count
-  gate_outcome = $gateOutcome
-  rollback_triggered = $RollbackTriggered
-  top_failure_causes = $topFailureCauses
-  failed_jobs = @($failedJobs | ForEach-Object {
-      [pscustomobject]@{
-        name = $_.name
-        conclusion = $_.conclusion
-      }
-    })
-  missing_required_artifacts = $missingArtifacts
-}
-
-$outputPath = Join-Path $OutputDir ("release-metrics-{0}.json" -f $RunId)
-$payload | ConvertTo-Json -Depth 8 | Set-Content -Path $outputPath -Encoding utf8
-
-$payload
+Invoke-ControlPlaneBridge -Command 'release-metrics' -Arguments $payload

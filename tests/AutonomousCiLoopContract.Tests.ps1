@@ -3,49 +3,39 @@
 
 $ErrorActionPreference = 'Stop'
 
-Describe 'Autonomous CI loop contract' {
+Describe 'Autonomous CI loop adapter contract' {
     BeforeAll {
         $script:repoRoot = (Resolve-Path -Path (Join-Path $PSScriptRoot '..')).Path
         $script:loopPath = Join-Path $script:repoRoot 'scripts/Invoke-AutonomousCiLoop.ps1'
+        $script:bridgePath = Join-Path $script:repoRoot 'scripts/Invoke-ControlPlaneBridge.ps1'
+        $script:controlPlaneDist = Join-Path $script:repoRoot 'control-plane/dist/index.js'
+        $script:controlPlaneSource = Join-Path $script:repoRoot 'control-plane/src/index.ts'
 
-        if (-not (Test-Path -Path $script:loopPath -PathType Leaf)) {
-            throw "Autonomous loop script not found: $script:loopPath"
+        foreach ($path in @($script:loopPath, $script:bridgePath, $script:controlPlaneDist, $script:controlPlaneSource)) {
+            if (-not (Test-Path -Path $path -PathType Leaf)) {
+                throw "Required control-plane artifact missing: $path"
+            }
         }
 
         $script:loopContent = Get-Content -Raw -Path $script:loopPath
+        $script:controlPlaneContent = Get-Content -Raw -Path $script:controlPlaneDist
     }
 
-    It 'includes robust dispatched-run correlation helper' {
-        $script:loopContent | Should -Match 'function\s+Resolve-DispatchedRunMeta'
-        $script:loopContent | Should -Match "--limit',\s*'20'"
-        $script:loopContent | Should -Match '\$event\s*-ne\s*''workflow_dispatch'''
+    It 'routes loop execution through the control-plane bridge' {
+        $script:loopContent | Should -Match 'Invoke-ControlPlaneBridge\.ps1'
+        $script:loopContent | Should -Match "Invoke-ControlPlaneBridge\s+-Command\s+'autonomous-loop'"
     }
 
-    It 'records expected and actual run head SHA in cycle logs' {
-        $script:loopContent | Should -Match 'head_sha_expected'
-        $script:loopContent | Should -Match 'head_sha_actual'
-        $script:loopContent | Should -Match 'record\.workflow_run\.head_sha_expected'
-        $script:loopContent | Should -Match 'record\.workflow_run\.head_sha_actual'
-    }
-
-    It 'records dispatch command response payload in cycle logs' {
-        $script:loopContent | Should -Match 'dispatch_response'
-        $script:loopContent | Should -Match 'dispatch_response\.exit_code'
-        $script:loopContent | Should -Match 'dispatch_response\.output_preview'
-        $script:loopContent | Should -Match 'dispatch_exit_code'
-    }
-
-    It 'supports configurable dispatch and run-query backends' {
-        $script:loopContent | Should -Match "DispatchBackend\s*=\s*'auto'"
-        $script:loopContent | Should -Match "RunQueryBackend\s*=\s*'auto'"
+    It 'keeps configurable dispatch and run-query backend options on the adapter surface' {
         $script:loopContent | Should -Match "ValidateSet\('auto', 'runner-cli', 'gh'\)"
-        $script:loopContent | Should -Match 'function\s+Invoke-WorkflowDispatch'
-        $script:loopContent | Should -Match 'function\s+Invoke-WorkflowRunList'
+        $script:loopContent | Should -Match 'DispatchBackend'
+        $script:loopContent | Should -Match 'RunQueryBackend'
     }
 
-    It 'defaults consumer_ref to develop when input is not explicitly provided' {
-        $script:loopContent | Should -Match 'hasConsumerRefInput'
-        $script:loopContent | Should -Match '\$key\s*-eq\s*''consumer_ref'''
-        $script:loopContent | Should -Match '\$normalizedWorkflowInputs\s*\+=\s*''consumer_ref=develop'''
+    It 'implements dispatch correlation, head SHA authority checks, and green-run metrics emission in control-plane runtime' {
+        $script:controlPlaneContent | Should -Match 'Unable to correlate dispatched workflow run'
+        $script:controlPlaneContent | Should -Match 'expectedHeadSha'
+        $script:controlPlaneContent | Should -Match 'green-run-'
+        $script:controlPlaneContent | Should -Match 'required_lanes_passed'
     }
 }

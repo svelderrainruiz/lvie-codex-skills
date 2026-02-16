@@ -1,4 +1,4 @@
-# Provenance Bundle Checklist (Phase 3)
+# Release Provenance Bundle Checklist
 
 Use this checklist before promoting canary -> stable.
 

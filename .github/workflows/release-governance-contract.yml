@@ -1,20 +1,18 @@
-name: phase4-metrics-contract
+name: release-governance-contract
 
 on:
   pull_request:
     paths:
       - 'docs/release-governance/**'
-      - 'schemas/release-metrics.schema.json'
-      - 'scripts/Invoke-ReleaseMetricsSnapshot.ps1'
-      - 'tests/Phase4MetricsContract.Tests.ps1'
-      - '.github/workflows/phase4-metrics-contract.yml'
+      - 'tests/ReleaseGovernanceContract.Tests.ps1'
+      - '.github/workflows/release-governance-contract.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  phase4-metrics-contract:
+  release-governance-contract:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -35,8 +33,8 @@ jobs:
             Install-Module -Name Pester -Scope CurrentUser -Force -SkipPublisherCheck -MinimumVersion $minimum
           }
 
-      - name: Run Phase 4 metrics contract tests
+      - name: Run release governance contract tests
         shell: pwsh
         run: |
           Import-Module Pester -MinimumVersion 5.0.0
-          Invoke-Pester -Path './tests/Phase4MetricsContract.Tests.ps1' -CI
+          Invoke-Pester -Path './tests/ReleaseGovernanceContract.Tests.ps1' -CI

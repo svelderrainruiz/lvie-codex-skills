@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/control-plane-green-run.schema.json",
+  "title": "Control Plane Green Run Metadata",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_utc",
+    "owner_repo",
+    "workflow",
+    "run_id",
+    "run_attempt",
+    "head_sha",
+    "status",
+    "conclusion",
+    "gate_outcome",
+    "required_lanes_passed",
+    "artifact_contract_hashes"
+  ],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "generated_utc": { "type": "string", "format": "date-time" },
+    "owner_repo": { "type": "string" },
+    "workflow": { "type": "string" },
+    "run_id": { "type": "integer", "minimum": 1 },
+    "run_attempt": { "type": "integer", "minimum": 1 },
+    "run_url": { "type": "string" },
+    "head_sha": { "type": "string" },
+    "expected_head_sha": { "type": ["string", "null"] },
+    "is_authoritative_latest_head": { "type": ["boolean", "null"] },
+    "status": { "type": "string" },
+    "conclusion": { "type": "string" },
+    "gate_outcome": { "type": "string", "enum": ["go", "no-go"] },
+    "required_lanes_passed": { "type": "boolean" },
+    "shadow_passed": { "type": ["boolean", "null"] },
+    "queue_seconds": { "type": ["integer", "null"], "minimum": 0 },
+    "duration_seconds": { "type": ["integer", "null"], "minimum": 0 },
+    "job_durations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status", "conclusion"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "conclusion": { "type": "string" },
+          "duration_seconds": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    },
+    "artifact_contract_hashes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "id": { "type": ["integer", "null"] },
+          "size_in_bytes": { "type": ["integer", "null"], "minimum": 0 }
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

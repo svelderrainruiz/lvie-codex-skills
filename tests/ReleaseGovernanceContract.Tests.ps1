@@ -3,7 +3,7 @@
 
 $ErrorActionPreference = 'Stop'
 
-Describe 'Phase 3 governance scaffolding contract' {
+Describe 'Release governance scaffolding contract' {
     BeforeAll {
         $script:repoRoot = (Resolve-Path -Path (Join-Path $PSScriptRoot '..')).Path
         $script:governanceRoot = Join-Path $script:repoRoot 'docs/release-governance'
@@ -19,7 +19,7 @@ Describe 'Phase 3 governance scaffolding contract' {
 
         foreach ($path in @($script:promotionPath, $script:rollbackContractPath, $script:rollbackRunbookPath, $script:provenanceChecklistPath)) {
             if (-not (Test-Path -Path $path -PathType Leaf)) {
-                throw "Phase 3 artifact missing: $path"
+                throw "Release governance artifact missing: $path"
             }
         }
 

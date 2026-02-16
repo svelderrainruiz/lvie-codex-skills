@@ -23,12 +23,16 @@ From skills repo CI run metadata:
 ## Advisory artifacts (non-gating)
 - docker-contract-pylavi-source-project-<run_id> (diagnostic source-project pylavi validation)
 - docker-contract-runner-cli-linux-x64-<run_id> (diagnostic runner-cli Linux Docker build/test/publish)
+- docker-contract-ppl-linux-raw-x86-<run_id> (Linux x86 shadow raw PPL artifact)
+- docker-contract-ppl-bundle-linux-x86-<run_id> (Linux x86 shadow PPL bundle artifact)
+- docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id> (Linux x86 shadow lane status/result/log/metrics)
 
 ## Release payload contract
 Release publish must include these files:
 - lvie-codex-skill-layer-installer.exe
 - lvie-ppl-bundle-windows-x64.zip
 - lvie-ppl-bundle-linux-x64.zip
+- lvie-ppl-bundle-linux-x86.zip
 - lvie-vip-package-self-hosted.zip
 - release-provenance.json
 - release-payload-manifest.json

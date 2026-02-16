@@ -48,6 +48,7 @@ If any condition fails: NO-GO (no release publish).
 Non-gating diagnostic lanes in `ci.yml` (advisory, not GO/NO-GO blockers):
 - `validate-pylavi-docker-source-project` (artifact `docker-contract-pylavi-source-project-<run_id>`)
 - `build-runner-cli-linux-docker` (artifact `docker-contract-runner-cli-linux-x64-<run_id>`)
+- `build-x86-ppl-linux-shadow` (artifacts `docker-contract-ppl-linux-raw-x86-<run_id>`, `docker-contract-ppl-bundle-linux-x86-<run_id>`, `docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id>`)
 
 ## 4) Dispatch source of truth
 Use skills repo release workflow inputs in `.github/workflows/release-skill-layer.yml`:
@@ -168,6 +169,7 @@ When `release-skill-layer` publishes a tag, expect:
 - `lvie-codex-skill-layer-installer.exe`
 - `lvie-ppl-bundle-windows-x64.zip`
 - `lvie-ppl-bundle-linux-x64.zip`
+- `lvie-ppl-bundle-linux-x86.zip`
 - `lvie-vip-package-self-hosted.zip`
 - `release-provenance.json`
 - `release-payload-manifest.json`

@@ -1,6 +1,6 @@
 ---
 name: linux-ppl-container-build
-description: Build LabVIEW packed project libraries (PPL) via the Linux Docker container parity lane with deterministic preflight checks, artifact expectations, and failure diagnostics.
+description: Build LabVIEW packed project libraries (PPL) via the Linux Docker container parity lane with deterministic preflight checks, bitness-aware artifact expectations, and failure diagnostics.
 ---
 
 # Linux PPL Container Build Skill
@@ -9,7 +9,8 @@ Use this skill when the request asks to build a PPL through Linux Docker/contain
 
 ## Inputs expected
 - Target repository path and branch/SHA context.
-- Build intent and target output filename (for example `lv_icon_x64.lvlibp`).
+- Build intent and target bitness (`64` or `32`).
+- Target output filename (for example `lv_icon_x64.lvlibp` or `lv_icon_x86.lvlibp`).
 - Linux container image/tag used by parity pipeline.
 
 ## Guardrails
@@ -19,7 +20,7 @@ Use this skill when the request asks to build a PPL through Linux Docker/contain
 4. Capture and surface container logs and status files when build fails.
 
 ## Success criteria
-- PPL artifact generated and named per pipeline convention.
+- PPL artifact generated for requested bitness and named per pipeline convention.
 - Artifact is published to the workflow artifacts set.
 - Build logs are available for diagnostics.
 - No hidden fallbacks to non-container execution paths.

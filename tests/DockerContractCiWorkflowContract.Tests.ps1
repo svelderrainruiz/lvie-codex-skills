@@ -45,6 +45,7 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:'
         $script:workflowContent | Should -Match 'build-x64-ppl-windows:'
         $script:workflowContent | Should -Match 'build-x64-ppl-linux:'
+        $script:workflowContent | Should -Match 'build-x86-ppl-linux-shadow:'
         $script:workflowContent | Should -Match 'gather-release-notes:'
         $script:workflowContent | Should -Match 'resolve-labview-profile:'
         $script:workflowContent | Should -Match 'prepare-vipb-linux:'
@@ -70,6 +71,8 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'build-x64-ppl-windows:\s*[\s\S]*?runs-on:\s*windows-latest'
         $script:workflowContent | Should -Match 'build-x64-ppl-windows:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target\]'
         $script:workflowContent | Should -Match 'build-x64-ppl-linux:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target,\s*build-x64-ppl-windows\]'
+        $script:workflowContent | Should -Match 'build-x86-ppl-linux-shadow:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target,\s*build-x64-ppl-linux\]'
+        $script:workflowContent | Should -Match 'build-x86-ppl-linux-shadow:\s*[\s\S]*?continue-on-error:\s*true'
         $script:workflowContent | Should -Match 'gather-release-notes:\s*[\s\S]*?runs-on:\s*ubuntu-latest'
         $script:workflowContent | Should -Match 'gather-release-notes:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target\]'
         $script:workflowContent | Should -Match 'resolve-labview-profile:\s*[\s\S]*?runs-on:\s*ubuntu-latest'
@@ -180,6 +183,25 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'Upload Linux x64 PPL bundle artifact'
     }
 
+    It 'defines linux x86 shadow PPL lane with schema-validated metrics and diagnostics artifacts' {
+        $script:workflowContent | Should -Match 'build-x86-ppl-linux-shadow:'
+        $script:workflowContent | Should -Match 'Build Linux x86 PPL in NI Linux container \(shadow\)'
+        $script:workflowContent | Should -Match 'CONTAINER_PARITY_LABVIEW_BITNESS=32'
+        $script:workflowContent | Should -Match 'CONTAINER_PARITY_BITNESS=32'
+        $script:workflowContent | Should -Match 'LABVIEW_BITNESS=32'
+        $script:workflowContent | Should -Match 'scripts/New-PplBundleManifest\.ps1'
+        $script:workflowContent | Should -Match '-Bitness ''32'''
+        $script:workflowContent | Should -Match 'schemas/control-plane-green-run\.schema\.json'
+        $script:workflowContent | Should -Match 'Linux x86 shadow metrics payload failed schema validation'
+        $script:workflowContent | Should -Match 'Publish Linux x86 shadow summary'
+        $script:workflowContent | Should -Match 'Upload Linux raw x86 PPL artifact'
+        $script:workflowContent | Should -Match 'docker-contract-ppl-linux-raw-x86-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:workflowContent | Should -Match 'Upload Linux x86 PPL bundle artifact'
+        $script:workflowContent | Should -Match 'docker-contract-ppl-bundle-linux-x86-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:workflowContent | Should -Match 'Upload Linux x86 shadow diagnostics artifact'
+        $script:workflowContent | Should -Match 'docker-contract-ppl-linux-x86-shadow-diagnostics-\$\{\{\s*github\.run_id\s*\}\}'
+    }
+
     It 'runs native LabVIEW lunit smoke gate in x64 with source-version target and uploads diagnostics artifact' {
         $runLunitBlockMatch = [regex]::Match($script:workflowContent, 'run-lunit-smoke-x64:\s*[\s\S]*?run-lunit-smoke-lv2020x64-edge:', [System.Text.RegularExpressions.RegexOptions]::Singleline)
         $runLunitBlockMatch.Success | Should -BeTrue
@@ -269,6 +291,21 @@ Describe 'Docker contract CI workflow contract' {
         @($errors).Count | Should -Be 0
     }
 
+    It 'keeps the Linux x86 shadow summary PowerShell block parse-safe' {
+        $summaryStepMatch = [regex]::Match(
+            $script:workflowContent,
+            '- name: Publish Linux x86 shadow summary[\s\S]*?run:\s*\|\s*(?<script>[\s\S]*?)\r?\n\s*- name: Upload Linux raw x86 PPL artifact',
+            [System.Text.RegularExpressions.RegexOptions]::Singleline
+        )
+        $summaryStepMatch.Success | Should -BeTrue
+
+        $summaryScript = $summaryStepMatch.Groups['script'].Value
+        $tokens = $null
+        $errors = $null
+        [void][System.Management.Automation.Language.Parser]::ParseInput($summaryScript, [ref]$tokens, [ref]$errors)
+        @($errors).Count | Should -Be 0
+    }
+
     It 'does not use inline if expressions inside -f format calls in workflow scripts' {
         $script:workflowContent | Should -Not -Match '-f\s+\(if\s+\('
     }
@@ -327,7 +364,7 @@ Describe 'Docker contract CI workflow contract' {
     }
 
     It 'creates manifests for both windows and linux bundles' {
-        ([regex]::Matches($script:workflowContent, 'scripts/New-PplBundleManifest\.ps1')).Count | Should -BeGreaterOrEqual 2
+        ([regex]::Matches($script:workflowContent, 'scripts/New-PplBundleManifest\.ps1')).Count | Should -BeGreaterOrEqual 3
     }
 
     It 'defines self-hosted native package version constants using 0.1.0 baseline' {

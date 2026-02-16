@@ -10,7 +10,10 @@ This module defines a Codex skill contract for building LabVIEW packed project l
 ## Scope
 - Build orchestration patterns for Linux container execution.
 - Required preflight checks before containerized PPL build.
-- Expected outputs (`lv_icon_x64.lvlibp`, container logs, status markers).
+- Expected outputs by bitness:
+  - `64`: `lv_icon_x64.lvlibp` (or configured output path)
+  - `32`: `lv_icon_x86.lvlibp` (or configured output path)
+- Container logs and status markers for diagnostics.
 
 ## Out of scope
 - Native host-based LabVIEW builds.

@@ -77,6 +77,7 @@ $requiredAssets = @(
     @{ name = 'lvie-codex-skill-layer-installer.exe'; category = 'installer' },
     @{ name = 'lvie-ppl-bundle-windows-x64.zip'; category = 'ppl_bundle_windows_x64' },
     @{ name = 'lvie-ppl-bundle-linux-x64.zip'; category = 'ppl_bundle_linux_x64' },
+    @{ name = 'lvie-ppl-bundle-linux-x86.zip'; category = 'ppl_bundle_linux_x86' },
     @{ name = 'lvie-vip-package-self-hosted.zip'; category = 'vip_package_self_hosted' },
     @{ name = 'release-provenance.json'; category = 'provenance' }
 )

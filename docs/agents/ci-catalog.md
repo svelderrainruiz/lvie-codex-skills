@@ -14,6 +14,7 @@ Provide a fast map of deterministic CI/release jobs and artifacts for GO/NO-GO a
 | `run-lunit-smoke-x64` | required native smoke gate (effective target year resolver-driven) | required |
 | `build-x64-ppl-windows` | Windows x64 PPL artifact lane | required |
 | `build-x64-ppl-linux` | Linux x64 PPL artifact lane | required |
+| `build-x86-ppl-linux-shadow` | Linux x86 container PPL shadow lane with schema-validated metrics | advisory (non-gating) |
 | `prepare-vipb-linux` | authoritative VIPB diagnostics/prep lane | required |
 | `build-vip-self-hosted` | self-hosted package build lane | required |
 | `install-vip-x86-self-hosted` | post-package VIPM install/uninstall smoke lane | required |
@@ -25,6 +26,11 @@ Provide a fast map of deterministic CI/release jobs and artifacts for GO/NO-GO a
 - `docker-contract-ppl-bundle-windows-x64-<run_id>`
 - `docker-contract-ppl-bundle-linux-x64-<run_id>`
 - `docker-contract-vip-package-self-hosted-<run_id>`
+
+## Advisory CI artifacts (non-gating)
+- `docker-contract-ppl-linux-raw-x86-<run_id>`
+- `docker-contract-ppl-bundle-linux-x86-<run_id>`
+- `docker-contract-ppl-linux-x86-shadow-diagnostics-<run_id>`
 
 ## Release workflow map
 | Job | Role |
@@ -39,6 +45,7 @@ Provide a fast map of deterministic CI/release jobs and artifacts for GO/NO-GO a
 - `lvie-codex-skill-layer-installer.exe`
 - `lvie-ppl-bundle-windows-x64.zip`
 - `lvie-ppl-bundle-linux-x64.zip`
+- `lvie-ppl-bundle-linux-x86.zip`
 - `lvie-vip-package-self-hosted.zip`
 - `release-provenance.json`
 - `release-payload-manifest.json`

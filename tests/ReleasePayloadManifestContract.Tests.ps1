@@ -32,6 +32,7 @@ Describe 'Release payload manifest contract' {
             'installer',
             'ppl_bundle_windows_x64',
             'ppl_bundle_linux_x64',
+            'ppl_bundle_linux_x86',
             'vip_package_self_hosted',
             'provenance'
         )) {
@@ -47,6 +48,7 @@ Describe 'Release payload manifest contract' {
                 'lvie-codex-skill-layer-installer.exe',
                 'lvie-ppl-bundle-windows-x64.zip',
                 'lvie-ppl-bundle-linux-x64.zip',
+                'lvie-ppl-bundle-linux-x86.zip',
                 'lvie-vip-package-self-hosted.zip',
                 'release-provenance.json'
             )
@@ -74,11 +76,12 @@ Describe 'Release payload manifest contract' {
             $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
             [string]$manifest.schema_version | Should -Be '1.0'
             [string]$manifest.release_tag | Should -Be 'v0.1.0'
-            @($manifest.assets).Count | Should -Be 5
+            @($manifest.assets).Count | Should -Be 6
             foreach ($category in @(
                 'installer',
                 'ppl_bundle_windows_x64',
                 'ppl_bundle_linux_x64',
+                'ppl_bundle_linux_x86',
                 'vip_package_self_hosted',
                 'provenance'
             )) {
@@ -104,6 +107,7 @@ Describe 'Release payload manifest contract' {
                 'lvie-codex-skill-layer-installer.exe',
                 'lvie-ppl-bundle-windows-x64.zip',
                 'lvie-ppl-bundle-linux-x64.zip',
+                'lvie-ppl-bundle-linux-x86.zip',
                 'release-provenance.json'
             )
             foreach ($name in $requiredFiles) {

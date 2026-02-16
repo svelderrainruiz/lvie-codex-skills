@@ -1,0 +1,13 @@
+/artifacts/**
+!/artifacts/release-metrics/
+!/artifacts/release-metrics/release-metrics-22005219153.json
+!/artifacts/release-state/
+!/artifacts/release-state/release-state-22005219153.json
+/worktmp/
+/worktrees/
+/consumer/
+/testResults.xml
+/TestResults/
+*.trx
+*.debug.log
+*.trace.log

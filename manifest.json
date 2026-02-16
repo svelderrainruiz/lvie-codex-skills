@@ -1,6 +1,6 @@
 {
   "name": "lvie-codex-skill-layer",
-  "version": "0.4.1",
+  "version": "1.0.0",
   "license_spdx": "0BSD",
   "license_file": "LICENSE",
   "generated_utc": null,
@@ -22,9 +22,9 @@
     "lunit-contract/fixtures/report-pass.xml",
     "lunit-contract/fixtures/report-fail.xml",
     "lunit-contract/fixtures/report-malformed.xml",
-    "proactive-loop/README.md",
-    "proactive-loop/sequence-mode-matrix.json",
-    "proactive-loop/sequence-diagnostics.schema.json",
+    "smart-control-loop/README.md",
+    "smart-control-loop/sequence-mode-matrix.json",
+    "smart-control-loop/sequence-diagnostics.schema.json",
     "headless-parity/README.md",
     "headless-parity/lvversion-lvproj-contract.json",
     "linux-ppl-container-build/README.md",
@@ -50,9 +50,9 @@
       "description": "Direct g-cli lunit + parser contract",
       "path": "lunit-contract"
     },
-    "proactive-loop": {
+    "smart-control-loop": {
       "description": "Single-bitness recovery sequence heuristics and diagnostics schema",
-      "path": "proactive-loop"
+      "path": "smart-control-loop"
     },
     "headless-parity": {
       "description": "Headless preflight .lvversion + runner-cli path contract",

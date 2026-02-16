@@ -1,4 +1,4 @@
-# Proactive Loop Contract
+# Smart Control Loop Contract
 
 Contract module for single-bitness recovery sequence and heuristic classification.
 

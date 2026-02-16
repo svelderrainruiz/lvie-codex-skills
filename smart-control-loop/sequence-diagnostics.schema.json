@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.invalid/lvie/proactive-loop/sequence-diagnostics.schema.json",
+  "$id": "https://example.invalid/lvie/smart-control-loop/sequence-diagnostics.schema.json",
   "title": "LVIE Sequence Diagnostics",
   "type": "object",
   "required": [

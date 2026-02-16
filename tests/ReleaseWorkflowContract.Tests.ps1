@@ -105,6 +105,8 @@ Describe 'Release workflow contract' {
         $script:releaseContent | Should -Match 'release-provenance\.json'
         $script:releaseContent | Should -Match 'release-payload-manifest\.json'
         $script:releaseContent | Should -Match 'New-ReleasePayloadManifest\.ps1'
+        $script:releaseContent | Should -Match 'contracts/build-lane-matrix\.json'
+        $script:releaseContent | Should -Match '-LaneMatrixPath\s+\$laneMatrixPath'
         $script:releaseContent | Should -Match 'schemas/release-payload-contract\.schema\.json'
         $script:releaseContent | Should -Match 'gh release upload'
         $script:releaseContent | Should -Match 'gh release create'

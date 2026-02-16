@@ -31,6 +31,8 @@ param(
 
     [string]$OutputPath = 'release-payload-manifest.json',
 
+    [string]$LaneMatrixPath = 'contracts/build-lane-matrix.json',
+
     [string]$SchemaPath
 )
 
@@ -73,14 +75,80 @@ else {
     Resolve-FullPath -Path (Join-Path -Path $resolvedStageDirectory -ChildPath $OutputPath)
 }
 
+$scriptRepoRoot = Resolve-FullPath -Path (Join-Path -Path $PSScriptRoot -ChildPath '..')
+$resolvedLaneMatrixPath = if ([System.IO.Path]::IsPathRooted($LaneMatrixPath)) {
+    Resolve-FullPath -Path $LaneMatrixPath
+}
+else {
+    Resolve-FullPath -Path (Join-Path -Path $scriptRepoRoot -ChildPath $LaneMatrixPath)
+}
+
+if (-not (Test-Path -LiteralPath $resolvedLaneMatrixPath -PathType Leaf)) {
+    throw "Lane matrix contract not found: $resolvedLaneMatrixPath"
+}
+
+$laneMatrixSchemaPath = Resolve-FullPath -Path (Join-Path -Path $scriptRepoRoot -ChildPath 'schemas/build-lane-matrix.schema.json')
+if (-not (Test-Path -LiteralPath $laneMatrixSchemaPath -PathType Leaf)) {
+    throw "Lane matrix schema not found: $laneMatrixSchemaPath"
+}
+
+$laneMatrixJson = Get-Content -LiteralPath $resolvedLaneMatrixPath -Raw
+$laneMatrixIsValid = $laneMatrixJson | Test-Json -SchemaFile $laneMatrixSchemaPath -ErrorAction Stop
+if (-not $laneMatrixIsValid) {
+    throw "Lane matrix contract failed schema validation: $resolvedLaneMatrixPath"
+}
+
+$laneMatrix = $laneMatrixJson | ConvertFrom-Json -ErrorAction Stop
+$laneAssets = @()
+foreach ($lane in @($laneMatrix.lanes)) {
+    if ($null -eq $lane) {
+        continue
+    }
+
+    $includeInRelease = $false
+    if ($null -ne $lane.include_in_release_payload) {
+        $includeInRelease = [bool]$lane.include_in_release_payload
+    }
+    if (-not $includeInRelease) {
+        continue
+    }
+
+    $releaseAssetName = [string]$lane.release_asset_name
+    $releaseAssetCategory = [string]$lane.release_asset_category
+    if ([string]::IsNullOrWhiteSpace($releaseAssetName)) {
+        throw "Lane '$($lane.lane_id)' has include_in_release_payload=true but release_asset_name is empty."
+    }
+    if ([string]::IsNullOrWhiteSpace($releaseAssetCategory)) {
+        throw "Lane '$($lane.lane_id)' has include_in_release_payload=true but release_asset_category is empty."
+    }
+
+    $laneAssets += @{
+        name = $releaseAssetName.Trim()
+        category = $releaseAssetCategory.Trim()
+    }
+}
+
 $requiredAssets = @(
-    @{ name = 'lvie-codex-skill-layer-installer.exe'; category = 'installer' },
-    @{ name = 'lvie-ppl-bundle-windows-x64.zip'; category = 'ppl_bundle_windows_x64' },
-    @{ name = 'lvie-ppl-bundle-linux-x64.zip'; category = 'ppl_bundle_linux_x64' },
-    @{ name = 'lvie-ppl-bundle-linux-x86.zip'; category = 'ppl_bundle_linux_x86' },
+    @{ name = 'lvie-codex-skill-layer-installer.exe'; category = 'installer' }
+)
+$requiredAssets += $laneAssets
+$requiredAssets += @(
     @{ name = 'lvie-vip-package-self-hosted.zip'; category = 'vip_package_self_hosted' },
     @{ name = 'release-provenance.json'; category = 'provenance' }
 )
+
+$dedupedRequiredAssets = @{}
+foreach ($requiredAsset in $requiredAssets) {
+    $assetName = [string]$requiredAsset.name
+    if ([string]::IsNullOrWhiteSpace($assetName)) {
+        throw "Required asset contract contains an empty asset name."
+    }
+    $dedupedRequiredAssets[$assetName] = @{
+        name = $assetName
+        category = [string]$requiredAsset.category
+    }
+}
+$requiredAssets = @($dedupedRequiredAssets.Values)
 
 $assetRecords = @()
 foreach ($requiredAsset in $requiredAssets) {

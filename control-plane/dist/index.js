@@ -16,6 +16,7 @@ const REQUIRED_ARTIFACT_PREFIXES = [
   'docker-contract-ppl-bundle-linux-x64-',
   'docker-contract-vip-package-self-hosted-'
 ];
+const DEFAULT_SHADOW_PROMOTION_MIN_GREENS = 5;
 
 function asString(value) {
   if (value === null || value === undefined) {
@@ -41,6 +42,29 @@ function asBool(value, fallback = false) {
     return false;
   }
   return fallback;
+}
+function asStringArray(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => asString(entry).trim()).filter((entry) => entry.length > 0);
+  }
+  const text = asString(value).trim();
+  if (text.length === 0) {
+    return [];
+  }
+  if (text.startsWith('[') && text.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        return parsed.map((entry) => asString(entry).trim()).filter((entry) => entry.length > 0);
+      }
+    }
+    catch {
+    }
+  }
+  return text
+    .split(/[;,]/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 }
 
 function parseJson(raw, label) {
@@ -161,6 +185,168 @@ function writeGreenRunMetrics(cwd, payload) {
   const outputPath = path.join(outputDir, `green-run-${payload.run_id}.json`);
   fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
   return outputPath;
+}
+function loadGreenRunMetrics(metricsDir) {
+  if (!fs.existsSync(metricsDir)) {
+    return [];
+  }
+  const entries = [];
+  const files = fs
+    .readdirSync(metricsDir)
+    .filter((name) => /^green-run-.*\.json$/i.test(name));
+  for (const fileName of files) {
+    const fullPath = path.join(metricsDir, fileName);
+    try {
+      const parsed = parseJson(fs.readFileSync(fullPath, 'utf8'), `green-run metrics (${fullPath})`);
+      const generatedUtc = asString(parsed.generated_utc);
+      const generatedMs = Date.parse(generatedUtc);
+      const stat = fs.statSync(fullPath);
+      entries.push({
+        ...parsed,
+        __file: fullPath,
+        __generated_ms: Number.isFinite(generatedMs) ? generatedMs : stat.mtimeMs
+      });
+    }
+    catch (error) {
+      console.error(`[control-plane] WARNING: skipping invalid metrics file '${fullPath}': ${error.message}`);
+    }
+  }
+  return entries.sort((a, b) => b.__generated_ms - a.__generated_ms);
+}
+function commandShadowPromotionEvaluate(rawArgs) {
+  const cwd = repoRoot();
+  process.chdir(cwd);
+  const threshold = Math.max(1, asInt(rawArgs.MinConsecutiveGreens, DEFAULT_SHADOW_PROMOTION_MIN_GREENS));
+  const metricsDirectoryInput = asString(rawArgs.MetricsDirectory);
+  const metricsDirectory = metricsDirectoryInput.length > 0
+    ? (path.isAbsolute(metricsDirectoryInput) ? metricsDirectoryInput : path.resolve(cwd, metricsDirectoryInput))
+    : path.join(cwd, 'artifacts', 'release-metrics');
+  const outputPathInput = asString(rawArgs.OutputPath);
+  const outputPath = outputPathInput.length > 0
+    ? (path.isAbsolute(outputPathInput) ? outputPathInput : path.resolve(cwd, outputPathInput))
+    : path.join(metricsDirectory, 'shadow-promotion-state.json');
+  const requiredLaneNames = asStringArray(rawArgs.RequiredLaneNames);
+  const shadowLaneNames = asStringArray(rawArgs.ShadowLaneNames);
+  const expectedRolloutSignature = asString(rawArgs.RolloutSignature).trim();
+  const expectedRunnerPoolSignature = asString(rawArgs.RunnerPoolSignature).trim();
+  const metrics = loadGreenRunMetrics(metricsDirectory);
+  let consecutiveGreens = 0;
+  let resetReason = metrics.length === 0 ? 'no_metrics' : '';
+  let baselineRolloutSignature = '';
+  let baselineRunnerPoolSignature = '';
+  const evaluatedRuns = [];
+  for (const metric of metrics) {
+    const laneName = asString(metric.lane_name);
+    const laneRole = asString(metric.lane_role).toLowerCase();
+    const runId = asInt(metric.run_id, 0);
+    const isAuthoritative = asBool(metric.is_authoritative_latest_head, false);
+    const requiredPassed = asBool(metric.required_lanes_passed, false);
+    const gateOutcome = asString(metric.gate_outcome).toLowerCase();
+    const conclusion = asString(metric.conclusion).toLowerCase();
+    const shadowField = metric.shadow_passed;
+    const shadowPassed = (shadowField === null || shadowField === undefined) ? true : asBool(shadowField, false);
+    const rolloutSignature = asString(metric.rollout_signature || metric.workflow || '').trim();
+    const runnerPoolSignature = asString(metric.runner_pool_signature ||
+      (Array.isArray(metric.runner_labels) ? metric.runner_labels.slice().sort().join(',') : '')).trim();
+    let qualifies = true;
+    let disqualifier = '';
+    if (!isAuthoritative) {
+      qualifies = false;
+      disqualifier = 'non_authoritative_head';
+    }
+    else if (!requiredPassed) {
+      qualifies = false;
+      disqualifier = 'required_lane_failure';
+    }
+    else if (!shadowPassed) {
+      qualifies = false;
+      disqualifier = 'shadow_lane_failure';
+    }
+    else if (gateOutcome !== 'go' || conclusion !== 'success') {
+      qualifies = false;
+      disqualifier = 'run_not_green';
+    }
+    if (qualifies && requiredLaneNames.length > 0 && laneRole === 'required' && laneName.length > 0) {
+      if (!requiredLaneNames.includes(laneName)) {
+        qualifies = false;
+        disqualifier = 'required_lane_scope_changed';
+      }
+    }
+    if (qualifies && shadowLaneNames.length > 0 && laneRole === 'shadow' && laneName.length > 0) {
+      if (!shadowLaneNames.includes(laneName)) {
+        qualifies = false;
+        disqualifier = 'shadow_lane_scope_changed';
+      }
+    }
+    if (qualifies && expectedRolloutSignature.length > 0 && rolloutSignature.length > 0 && rolloutSignature !== expectedRolloutSignature) {
+      qualifies = false;
+      disqualifier = 'rollout_signature_changed';
+    }
+    if (qualifies && expectedRunnerPoolSignature.length > 0 && runnerPoolSignature.length > 0 && runnerPoolSignature !== expectedRunnerPoolSignature) {
+      qualifies = false;
+      disqualifier = 'runner_pool_changed';
+    }
+    if (qualifies && consecutiveGreens > 0 && baselineRolloutSignature.length > 0 && rolloutSignature.length > 0 && rolloutSignature !== baselineRolloutSignature) {
+      qualifies = false;
+      disqualifier = 'rollout_signature_changed';
+    }
+    if (qualifies && consecutiveGreens > 0 && baselineRunnerPoolSignature.length > 0 && runnerPoolSignature.length > 0 && runnerPoolSignature !== baselineRunnerPoolSignature) {
+      qualifies = false;
+      disqualifier = 'runner_pool_changed';
+    }
+    evaluatedRuns.push({
+      run_id: runId,
+      lane_name: laneName,
+      lane_role: laneRole,
+      qualifies,
+      disqualifier,
+      is_authoritative_latest_head: isAuthoritative,
+      required_lanes_passed: requiredPassed,
+      shadow_passed: shadowPassed,
+      gate_outcome: gateOutcome,
+      conclusion,
+      rollout_signature: rolloutSignature,
+      runner_pool_signature: runnerPoolSignature,
+      metrics_file: asString(metric.__file),
+      generated_utc: asString(metric.generated_utc)
+    });
+    if (qualifies) {
+      if (consecutiveGreens === 0) {
+        baselineRolloutSignature = rolloutSignature;
+        baselineRunnerPoolSignature = runnerPoolSignature;
+      }
+      consecutiveGreens += 1;
+      if (consecutiveGreens >= threshold) {
+        break;
+      }
+      continue;
+    }
+    if (resetReason.length === 0) {
+      resetReason = disqualifier.length > 0 ? disqualifier : 'unknown_reset';
+    }
+    break;
+  }
+  if (consecutiveGreens < threshold && resetReason.length === 0) {
+    resetReason = metrics.length === 0 ? 'no_metrics' : 'insufficient_consecutive_greens';
+  }
+  const state = {
+    schema_version: '1.0',
+    generated_utc: new Date().toISOString(),
+    threshold,
+    consecutive_green_count: consecutiveGreens,
+    promotion_ready: consecutiveGreens >= threshold,
+    reset_reason: resetReason,
+    metrics_directory: metricsDirectory,
+    required_lane_names: requiredLaneNames,
+    shadow_lane_names: shadowLaneNames,
+    expected_rollout_signature: expectedRolloutSignature,
+    expected_runner_pool_signature: expectedRunnerPoolSignature,
+    evaluated_run_count: evaluatedRuns.length,
+    evaluated_runs: evaluatedRuns
+  };
+  ensureDir(path.dirname(outputPath));
+  fs.writeFileSync(outputPath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+  console.log(JSON.stringify(state, null, 2));
 }
 
 function commandReleaseMetrics(rawArgs) {
@@ -489,7 +675,8 @@ function commandSelfCheck() {
   console.log(JSON.stringify({
     status: 'ok',
     generated_utc: new Date().toISOString(),
-    required_artifact_prefixes: REQUIRED_ARTIFACT_PREFIXES
+    required_artifact_prefixes: REQUIRED_ARTIFACT_PREFIXES,
+    shadow_promotion_min_greens: DEFAULT_SHADOW_PROMOTION_MIN_GREENS
   }, null, 2));
 }
 
@@ -507,6 +694,9 @@ function main() {
       return;
     case 'release-orchestrator':
       commandReleaseOrchestrator(parsed.args);
+      return;
+    case 'shadow-promotion-evaluate':
+      commandShadowPromotionEvaluate(parsed.args);
       return;
     case 'self-check':
       commandSelfCheck();

@@ -37,13 +37,13 @@ Describe 'Invoke-ContractTests script contract' {
         New-Item -Path $outputDir -ItemType Directory -Force | Out-Null
         $resultPath = Join-Path $outputDir 'explicit-result.xml'
 
-        & pwsh -NoProfile -ExecutionPolicy Bypass -File $script:scriptPath -TestPath './tests/ManifestContract.Tests.ps1' -TestResultPath $resultPath
+        & pwsh -NoProfile -File $script:scriptPath -TestPath './tests/ManifestContract.Tests.ps1' -TestResultPath $resultPath
         $LASTEXITCODE | Should -Be 0
         (Test-Path -LiteralPath $resultPath -PathType Leaf) | Should -BeTrue
     }
 
     It 'prints default unique result path and does not use repo-root testResults.xml' {
-        $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File $script:scriptPath -TestPath './tests/ManifestContract.Tests.ps1' 2>&1
+        $output = & pwsh -NoProfile -File $script:scriptPath -TestPath './tests/ManifestContract.Tests.ps1' 2>&1
         $LASTEXITCODE | Should -Be 0
 
         $pathLine = @($output | Where-Object { $_ -match '^Pester NUnit XML path:\s*(.+)$' }) | Select-Object -Last 1

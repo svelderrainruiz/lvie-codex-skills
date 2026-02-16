@@ -1,4 +1,4 @@
-# labview-icon-editor-codex-skills
+# lvie-codex-skills
 
 Layered Codex skill assets for `labview-icon-editor` CI/runtime integrations.
 
@@ -56,7 +56,7 @@ Use this once per skills-repo fork to set source project portability variables:
 
 ```powershell
 pwsh -NoProfile -File ./scripts/Initialize-ForkPortability.ps1 `
-  -SkillsRepo '<owner>/labview-icon-editor-codex-skills' `
+  -SkillsRepo '<owner>/lvie-codex-skills' `
   -SourceProjectRepo '<owner>/labview-icon-editor' `
   -SourceProjectRef 'main'
 ```
@@ -72,7 +72,7 @@ Deterministic SHA pin rotation:
 
 ```powershell
 pwsh -NoProfile -File ./scripts/Initialize-ForkPortability.ps1 `
-  -SkillsRepo '<owner>/labview-icon-editor-codex-skills' `
+  -SkillsRepo '<owner>/lvie-codex-skills' `
   -RefreshSourceSha
 ```
 
@@ -311,3 +311,4 @@ Installer contract:
     - `pylavi-docker.log`
     - `vi-validate.stdout.txt`
     - `vi-validate.stderr.txt`
+

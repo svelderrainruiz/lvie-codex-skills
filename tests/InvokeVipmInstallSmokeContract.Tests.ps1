@@ -127,7 +127,7 @@ exit 9
             $mockVipmCmdPath = Join-Path $shimDir 'vipm.cmd'
             @'
 @echo off
-pwsh -NoProfile -ExecutionPolicy Bypass -File "%~dp0mock-vipm.ps1" %*
+pwsh -NoProfile -File "%~dp0mock-vipm.ps1" %*
 exit /b %errorlevel%
 '@ | Set-Content -LiteralPath $mockVipmCmdPath -Encoding ASCII
 
@@ -138,7 +138,7 @@ exit /b %errorlevel%
             $env:VIPM_COMMUNITY_EDITION = 'true'
             $env:PATH = "$shimDir;$originalPath"
 
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File $script:scriptPath `
+            & pwsh -NoProfile -File $script:scriptPath `
                 -SourceProjectRoot $sourceRoot `
                 -VipArtifactPath $vipPath `
                 -RequiredBitness '32' `
@@ -218,7 +218,7 @@ exit /b 0
 
             $env:PATH = "$shimDir;$originalPath"
 
-            $commandOutput = & pwsh -NoProfile -ExecutionPolicy Bypass -File $script:scriptPath `
+            $commandOutput = & pwsh -NoProfile -File $script:scriptPath `
                 -SourceProjectRoot $sourceRoot `
                 -VipArtifactPath (Join-Path $artifactDirectory 'labview-icon-editor.vip') `
                 -OutputDirectory $outputDirectory 2>&1

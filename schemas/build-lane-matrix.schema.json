@@ -91,6 +91,17 @@
               "type": "string",
               "minLength": 1
             }
+          },
+          "include_in_release_payload": {
+            "type": "boolean"
+          },
+          "release_asset_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "release_asset_category": {
+            "type": "string",
+            "minLength": 1
           }
         }
       }

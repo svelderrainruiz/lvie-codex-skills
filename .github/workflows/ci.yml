@@ -1365,6 +1365,7 @@ jobs:
           $versionHelper = Join-Path $consumerRoot 'Tooling/support/LabVIEWVersion.ps1'
           . $versionHelper
           $lvInfo = Get-LabVIEWVersionInfo -RepoRoot $consumerRoot
+          "raw=$($lvInfo.Raw)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "year=$($lvInfo.Year)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           "minor=$($lvInfo.MinorRevision)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host ("Resolved LabVIEW version from source project .lvversion: {0}" -f $lvInfo.Raw)
@@ -1846,6 +1847,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $labviewVersionRaw = '${{ steps.labview-version.outputs.raw }}'
           $labviewYear = '${{ steps.labview-version.outputs.year }}'
           $closeScriptPath = Join-Path $consumerRoot '.github/actions/close-labview/Close_LabVIEW.ps1'
           $closeScriptBackupPath = Join-Path $consumerRoot '.github/actions/close-labview/Close_LabVIEW.gcli.ps1'
@@ -1962,7 +1964,7 @@ jobs:
             }
 
             & "$consumerRoot/.github/actions/build-lvlibp/BuildProjectSpec.ps1" `
-              -LabVIEWVersion $labviewYear `
+              -LabVIEWVersion $labviewVersionRaw `
               -SupportedBitness 32 `
               -RepoRoot "$consumerRoot" `
               -Major $env:VERSION_MAJOR `

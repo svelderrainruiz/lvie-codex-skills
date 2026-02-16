@@ -57,13 +57,18 @@ Describe 'Release workflow contract' {
         $script:releaseContent | Should -Not -Match 'run_lv2020_edge_smoke:'
     }
 
-    It 'resolves source project target from inputs then repository variables with strict SHA requirement' {
+    It 'resolves source project target from inputs then repository variables with optional SHA pin mode' {
         $script:releaseContent | Should -Match 'VAR_SOURCE_PROJECT_REPO:\s*\$\{\{\s*vars\.LVIE_SOURCE_PROJECT_REPO'
         $script:releaseContent | Should -Match 'VAR_SOURCE_PROJECT_REF:\s*\$\{\{\s*vars\.LVIE_SOURCE_PROJECT_REF'
         $script:releaseContent | Should -Match 'VAR_SOURCE_PROJECT_SHA:\s*\$\{\{\s*vars\.LVIE_SOURCE_PROJECT_SHA'
         $script:releaseContent | Should -Match 'VAR_LABVIEW_PROFILE:\s*\$\{\{\s*vars\.LVIE_LABVIEW_PROFILE'
         $script:releaseContent | Should -Match '\{0\}/labview-icon-editor''\s*-f\s*\[string\]\$env:GITHUB_REPOSITORY_OWNER'
-        $script:releaseContent | Should -Match 'Strict pin is required; set workflow input ''consumer_sha'' or repository variable ''LVIE_SOURCE_PROJECT_SHA'''
+        $script:releaseContent | Should -Match 'consumer_sha_mode:\s*\$\{\{\s*steps\.resolve\.outputs\.consumer_sha_mode\s*\}\}'
+        $script:releaseContent | Should -Match "\$consumerShaMode = 'floating_ref'"
+        $script:releaseContent | Should -Match "\$consumerShaMode = 'pinned'"
+        $script:releaseContent | Should -Match 'gh api "repos/\$consumerRepo/commits/\$escapedRef" --jq ''\.sha'''
+        $script:releaseContent | Should -Match 'Source project sha mode: \$consumerShaMode'
+        $script:releaseContent | Should -Not -Match 'Strict pin is required'
         $script:releaseContent | Should -Not -Match 'Get-CiDefaultValue'
     }
 

@@ -123,6 +123,27 @@ function Set-RepositoryVariable {
     return 'created'
 }
 
+function Remove-RepositoryVariable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Repository,
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $probe = Invoke-Gh -Arguments @('api', "repos/$Repository/actions/variables/$Name") -AllowFailure
+    if ($probe.ExitCode -ne 0) {
+        return 'absent'
+    }
+
+    Invoke-Gh -Arguments @(
+        'api',
+        '-X', 'DELETE',
+        "repos/$Repository/actions/variables/$Name"
+    ) | Out-Null
+    return 'removed'
+}
+
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $repoRoot = (Resolve-Path -Path (Join-Path $PSScriptRoot '..')).Path
     $OutputPath = Join-Path $repoRoot 'artifacts/portability-bootstrap/portability-bootstrap.result.json'
@@ -162,20 +183,28 @@ try {
     $skillsRepoId = Resolve-RepoId -Repository $SkillsRepo
     $result.skills_repo = $skillsRepoId
 
-    if ($RefreshSourceSha) {
-        if ([string]::IsNullOrWhiteSpace($SourceProjectRepo)) {
-            $SourceProjectRepo = Get-RepositoryVariableValue -Repository $skillsRepoId -Name 'LVIE_SOURCE_PROJECT_REPO'
-        }
-        if ([string]::IsNullOrWhiteSpace($SourceProjectRef)) {
-            $SourceProjectRef = Get-RepositoryVariableValue -Repository $skillsRepoId -Name 'LVIE_SOURCE_PROJECT_REF'
+    $existingSourceRepo = Get-RepositoryVariableValue -Repository $skillsRepoId -Name 'LVIE_SOURCE_PROJECT_REPO'
+    $existingSourceRef = Get-RepositoryVariableValue -Repository $skillsRepoId -Name 'LVIE_SOURCE_PROJECT_REF'
+    $defaultSourceRepo = "{0}/labview-icon-editor" -f ($skillsRepoId.Split('/')[0])
+
+    if ([string]::IsNullOrWhiteSpace($SourceProjectRepo)) {
+        if ($RefreshSourceSha -and -not [string]::IsNullOrWhiteSpace($existingSourceRepo)) {
+            $SourceProjectRepo = $existingSourceRepo
+        } elseif (-not [string]::IsNullOrWhiteSpace($existingSourceRepo)) {
+            $SourceProjectRepo = $existingSourceRepo
+        } else {
+            $SourceProjectRepo = $defaultSourceRepo
         }
     }
 
-    if ([string]::IsNullOrWhiteSpace($SourceProjectRepo)) {
-        throw "SourceProjectRepo is required. Provide -SourceProjectRepo or ensure LVIE_SOURCE_PROJECT_REPO exists when using -RefreshSourceSha."
-    }
     if ([string]::IsNullOrWhiteSpace($SourceProjectRef)) {
-        throw "SourceProjectRef is required. Provide -SourceProjectRef or ensure LVIE_SOURCE_PROJECT_REF exists when using -RefreshSourceSha."
+        if ($RefreshSourceSha -and -not [string]::IsNullOrWhiteSpace($existingSourceRef)) {
+            $SourceProjectRef = $existingSourceRef
+        } elseif (-not [string]::IsNullOrWhiteSpace($existingSourceRef)) {
+            $SourceProjectRef = $existingSourceRef
+        } else {
+            $SourceProjectRef = 'main'
+        }
     }
 
     $sourceProjectRepoId = Resolve-RepoId -Repository $SourceProjectRepo
@@ -187,13 +216,16 @@ try {
     $result.source_project_repo = $sourceProjectRepoId
     $result.source_project_ref = $sourceProjectRefValue
 
-    $encodedRef = [System.Uri]::EscapeDataString($sourceProjectRefValue)
-    $commitResult = Invoke-Gh -Arguments @('api', "repos/$sourceProjectRepoId/commits/$encodedRef", '--jq', '.sha')
-    $resolvedSha = $commitResult.OutputText.Trim().ToLowerInvariant()
-    if ($resolvedSha -notmatch '^[0-9a-f]{40}$') {
-        throw "Resolved source SHA '$resolvedSha' is invalid for '$sourceProjectRepoId@$sourceProjectRefValue'."
+    $resolvedSha = ''
+    if ($RefreshSourceSha) {
+        $encodedRef = [System.Uri]::EscapeDataString($sourceProjectRefValue)
+        $commitResult = Invoke-Gh -Arguments @('api', "repos/$sourceProjectRepoId/commits/$encodedRef", '--jq', '.sha')
+        $resolvedSha = $commitResult.OutputText.Trim().ToLowerInvariant()
+        if ($resolvedSha -notmatch '^[0-9a-f]{40}$') {
+            throw "Resolved source SHA '$resolvedSha' is invalid for '$sourceProjectRepoId@$sourceProjectRefValue'."
+        }
+        $result.source_project_sha = $resolvedSha
     }
-    $result.source_project_sha = $resolvedSha
 
     $resolvedLabviewProfile = if ([string]::IsNullOrWhiteSpace($LabviewProfile)) { 'lv2026' } else { $LabviewProfile.Trim() }
     $resolvedParityProfile = if ([string]::IsNullOrWhiteSpace($ParityEnforcementProfile)) { 'auto' } else { $ParityEnforcementProfile.Trim().ToLowerInvariant() }
@@ -203,9 +235,12 @@ try {
     $variablesToSet = [ordered]@{
         LVIE_SOURCE_PROJECT_REPO = $sourceProjectRepoId
         LVIE_SOURCE_PROJECT_REF = $sourceProjectRefValue
-        LVIE_SOURCE_PROJECT_SHA = $resolvedSha
         LVIE_LABVIEW_PROFILE = $resolvedLabviewProfile
         LVIE_PARITY_ENFORCEMENT_PROFILE = $resolvedParityProfile
+    }
+
+    if ($RefreshSourceSha) {
+        $variablesToSet['LVIE_SOURCE_PROJECT_SHA'] = $resolvedSha
     }
 
     foreach ($entry in $variablesToSet.GetEnumerator()) {
@@ -213,6 +248,15 @@ try {
         $result.variable_updates += [pscustomobject]@{
             name = [string]$entry.Key
             value = [string]$entry.Value
+            action = [string]$actionTaken
+        }
+    }
+
+    if (-not $RefreshSourceSha) {
+        $actionTaken = Remove-RepositoryVariable -Repository $skillsRepoId -Name 'LVIE_SOURCE_PROJECT_SHA'
+        $result.variable_updates += [pscustomobject]@{
+            name = 'LVIE_SOURCE_PROJECT_SHA'
+            value = ''
             action = [string]$actionTaken
         }
     }
@@ -230,5 +274,9 @@ if ($result.status -ne 'success') {
 }
 
 Write-Host "Fork portability bootstrap succeeded for '$($result.skills_repo)'."
-Write-Host "Source pin: $($result.source_project_repo)@$($result.source_project_ref) -> $($result.source_project_sha)"
+if ($RefreshSourceSha) {
+    Write-Host "Source pin: $($result.source_project_repo)@$($result.source_project_ref) -> $($result.source_project_sha)"
+} else {
+    Write-Host "Source pin mode: floating ref (LVIE_SOURCE_PROJECT_SHA removed unless explicitly refreshed)."
+}
 Write-Host "Result payload: $OutputPath"

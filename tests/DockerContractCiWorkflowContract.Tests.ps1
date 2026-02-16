@@ -53,7 +53,10 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'ci-self-hosted-final-gate:'
         $script:workflowContent | Should -Match 'resolve-source-target:'
         $script:workflowContent | Should -Match 'resolve-source-target:\s*[\s\S]*?needs:\s*\[docker-ci\]'
-        $script:workflowContent | Should -Match 'resolve-source-target:\s*[\s\S]*?Strict pin is required'
+        $script:workflowContent | Should -Match 'resolve-source-target:\s*[\s\S]*?consumer_sha_mode:\s*\$\{\{\s*steps\.resolve\.outputs\.consumer_sha_mode\s*\}\}'
+        $script:workflowContent | Should -Match "resolve-source-target:\s*[\s\S]*?\$consumerShaMode = 'floating_ref'"
+        $script:workflowContent | Should -Match "resolve-source-target:\s*[\s\S]*?\$consumerShaMode = 'pinned'"
+        $script:workflowContent | Should -Match 'resolve-source-target:\s*[\s\S]*?gh api "repos/\$consumerRepo/commits/\$escapedRef" --jq ''\.sha'''
         $script:workflowContent | Should -Match 'resolve-source-target:\s*[\s\S]*?LVIE_SOURCE_PROJECT_REPO'
         $script:workflowContent | Should -Match 'validate-pylavi-docker-source-project:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target\]'
         $script:workflowContent | Should -Match 'validate-pylavi-docker-source-project:\s*[\s\S]*?continue-on-error:\s*true'

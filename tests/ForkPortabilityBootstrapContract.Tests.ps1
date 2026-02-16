@@ -40,11 +40,14 @@ Describe 'Fork portability bootstrap contract' {
         $script:scriptContent | Should -Match "api',\s*'-X',\s*'POST'"
     }
 
-    It 'enforces strict resolved SHA pin and emits deterministic result payload' {
-        $script:scriptContent | Should -Match "SourceProjectRepo is required"
-        $script:scriptContent | Should -Match "SourceProjectRef is required"
-        $script:scriptContent | Should -Match 'repos/\$sourceProjectRepoId/commits/\$encodedRef'
+    It 'supports floating-ref default mode with optional SHA refresh and emits deterministic result payload' {
+        $script:scriptContent | Should -Match 'defaultSourceRepo = "\{0\}/labview-icon-editor"'
+        $script:scriptContent | Should -Match "\$SourceProjectRef = 'main'"
+        $script:scriptContent | Should -Match 'if \(\$RefreshSourceSha\)\s*\{\s*[\s\S]*?repos/\$sourceProjectRepoId/commits/\$encodedRef'
         $script:scriptContent | Should -Match '\^\[0-9a-f\]\{40\}\$'
+        $script:scriptContent | Should -Match 'Remove-RepositoryVariable'
+        $script:scriptContent | Should -Match "name = 'LVIE_SOURCE_PROJECT_SHA'"
+        $script:scriptContent | Should -Match 'floating ref'
         $script:scriptContent | Should -Match 'portability-bootstrap\.result\.json'
         $script:scriptContent | Should -Match 'schema_version'
         $script:scriptContent | Should -Match "status = 'success'"

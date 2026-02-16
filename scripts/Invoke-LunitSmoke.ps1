@@ -8,7 +8,7 @@ param(
     [string]$ProjectName = 'lv_icon_editor.lvproj',
 
     [ValidateRange(2000, 2100)]
-    [int]$TargetLabVIEWVersion = 2020,
+    [int]$TargetLabVIEWVersion = 2026,
 
     [ValidateSet('64')]
     [string]$RequiredBitness = '64',
@@ -16,11 +16,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
 
-    [string]$OverrideLvversion = '20.0',
+    [string]$OverrideLvversion = '26.1',
 
-    [switch]$EnforceLabVIEWProcessIsolation,
-
-    [switch]$AllowNoTestcasesWhenControlProbePasses
+    [switch]$EnforceLabVIEWProcessIsolation
 )
 
 Set-StrictMode -Version Latest
@@ -77,7 +75,7 @@ function Parse-LvversionValue {
     )
 
     if ($RawValue -notmatch '^(?<major>\d+)\.(?<minor>\d+)$') {
-        throw "$Label value '$RawValue' is invalid. Expected numeric major.minor format (for example '20.0')."
+        throw "$Label value '$RawValue' is invalid. Expected numeric major.minor format (for example '26.1')."
     }
 
     $major = [int]$Matches['major']
@@ -101,7 +99,8 @@ function New-QuotedCommand {
     return ($Args | ForEach-Object {
         if ($_ -match '\s') {
             '"' + $_.Replace('"', '\"') + '"'
-        } else {
+        }
+        else {
             $_
         }
     }) -join ' '
@@ -252,11 +251,11 @@ function Read-LunitReportSummary {
 
         if ($isFailed) {
             $failed.Add([ordered]@{
-                classname = [string]$case.GetAttribute('classname')
-                name = [string]$case.GetAttribute('name')
-                status = $status
-                failure_message = if ($null -ne $failureNode) { [string]$failureNode.GetAttribute('message') } else { '' }
-            })
+                    classname = [string]$case.GetAttribute('classname')
+                    name = [string]$case.GetAttribute('name')
+                    status = $status
+                    failure_message = if ($null -ne $failureNode) { [string]$failureNode.GetAttribute('message') } else { '' }
+                })
         }
     }
 
@@ -288,180 +287,10 @@ function Get-ReportValidationOutcomeFromError {
     return 'report_validation_error'
 }
 
-function Get-VipmInstalledPackages {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$VipmCommandPath,
-        [Parameter(Mandatory = $true)]
-        [string]$LabVIEWVersion,
-        [Parameter(Mandatory = $true)]
-        [string]$Bitness
-    )
-
-    $args = @('--labview-version', $LabVIEWVersion, '--labview-bitness', $Bitness, 'list', '--installed')
-    $output = & $VipmCommandPath @args 2>&1
-    $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
-    $outputText = (@($output | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
-
-    $packageIds = New-Object 'System.Collections.Generic.List[string]'
-    foreach ($line in @($output | ForEach-Object { $_.ToString() })) {
-        if ($line -match '\((?<id>[A-Za-z0-9_]+)\s+v[^\)]*\)') {
-            $candidate = $Matches['id'].ToLowerInvariant()
-            if (-not [string]::IsNullOrWhiteSpace($candidate) -and -not $packageIds.Contains($candidate)) {
-                $packageIds.Add($candidate) | Out-Null
-            }
-        }
-    }
-
-    return [ordered]@{
-        command = 'vipm ' + (New-QuotedCommand -Args $args)
-        exit_code = $exitCode
-        output = $outputText
-        package_ids = @($packageIds)
-    }
-}
-
-function Invoke-Lv2026ControlProbe {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$GcliCommandPath,
-        [Parameter(Mandatory = $true)]
-        [string]$SourceProjectRoot,
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectRelativePath,
-        [Parameter(Mandatory = $true)]
-        [string]$SourceLvversionRaw,
-        [Parameter(Mandatory = $true)]
-        [string]$ReportPath
-    )
-
-    $control = [ordered]@{
-        executed = $true
-        status = 'failed'
-        reason = ''
-        target_labview_version = '2026'
-        required_bitness = '64'
-        active_labview_processes = @()
-        workspace_root = ''
-        report_path = $ReportPath
-        command = ''
-        run_exit_code = $null
-        run_output = ''
-        validation_outcome = 'not_validated'
-        total = $null
-        passed = $null
-        skipped = $null
-        failed = $null
-        failed_cases = @()
-        error = $null
-    }
-
-    $controlWorkspaceRoot = $null
-    try {
-        if (-not (Test-Path -LiteralPath $SourceProjectRoot -PathType Container)) {
-            throw "Source project root not found for LV2026 control probe: '$SourceProjectRoot'."
-        }
-
-        $reportDirectory = Split-Path -Path $ReportPath -Parent
-        if (-not [string]::IsNullOrWhiteSpace($reportDirectory)) {
-            Ensure-Directory -Path $reportDirectory
-        }
-
-        $workspaceParent = if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
-            $env:RUNNER_TEMP
-        }
-        elseif (-not [string]::IsNullOrWhiteSpace($env:TEMP)) {
-            $env:TEMP
-        }
-        else {
-            [System.IO.Path]::GetTempPath()
-        }
-
-        $controlWorkspaceRoot = Join-Path $workspaceParent ("lunit-smoke-lv2026-control-{0}" -f [guid]::NewGuid().ToString('N'))
-        Ensure-Directory -Path $controlWorkspaceRoot
-        $control.workspace_root = $controlWorkspaceRoot
-
-        foreach ($entry in (Get-ChildItem -LiteralPath $SourceProjectRoot -Force)) {
-            Copy-Item -LiteralPath $entry.FullName -Destination $controlWorkspaceRoot -Recurse -Force
-        }
-
-        $workspaceProjectPath = Join-Path $controlWorkspaceRoot $ProjectRelativePath
-        if (-not (Test-Path -LiteralPath $workspaceProjectPath -PathType Leaf)) {
-            throw "LV2026 control probe workspace project copy missing at '$workspaceProjectPath'."
-        }
-
-        $workspaceLvversionPath = Join-Path (Split-Path -Path $workspaceProjectPath -Parent) '.lvversion'
-        if (-not (Test-Path -LiteralPath $workspaceLvversionPath -PathType Leaf)) {
-            throw "LV2026 control probe workspace .lvversion missing at '$workspaceLvversionPath'."
-        }
-        Set-Content -LiteralPath $workspaceLvversionPath -Value $SourceLvversionRaw -Encoding ASCII
-
-        $probeArgs = @('--lv-ver', '2026', '--arch', '64', 'lunit', '--', '-r', $ReportPath, $workspaceProjectPath)
-        $control.command = 'g-cli ' + (New-QuotedCommand -Args $probeArgs)
-        Write-Log ("Executing diagnostic-only LV2026 control probe command: {0}" -f $control.command)
-        $probeOutput = & $GcliCommandPath @probeArgs 2>&1
-        $probeExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
-        $control.run_exit_code = $probeExitCode
-        $control.run_output = (@($probeOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine)
-
-        try {
-            $probeReportSummary = Read-LunitReportSummary -ReportPath $ReportPath
-            $control.validation_outcome = 'parsed'
-        }
-        catch {
-            $probeValidationOutcome = Get-ReportValidationOutcomeFromError -Message $_.Exception.Message
-            $control.validation_outcome = $probeValidationOutcome
-            throw ("LV2026 control probe report validation failed ({0}): {1} (run exit code {2})." -f $probeValidationOutcome, $_.Exception.Message, $probeExitCode)
-        }
-
-        $control.total = [int]$probeReportSummary.total
-        $control.passed = [int]$probeReportSummary.passed
-        $control.skipped = [int]$probeReportSummary.skipped
-        $control.failed = [int]$probeReportSummary.failed
-        $control.failed_cases = @($probeReportSummary.failed_cases)
-        if ([int]$probeReportSummary.failed -gt 0) {
-            $control.validation_outcome = 'failed_testcases'
-            throw ("LV2026 control probe report validation failed (failed_testcases): report contains {0} failing test(s) (run exit code {1})." -f $probeReportSummary.failed, $probeExitCode)
-        }
-        $control.validation_outcome = 'passed'
-
-        if ($probeExitCode -ne 0) {
-            Write-Log ("WARNING: LV2026 control probe exited with code {0} but report validation passed; keeping diagnostic probe status as passed." -f $probeExitCode)
-        }
-
-        $control.status = 'passed'
-        $control.reason = 'control_probe_passed'
-    }
-    catch {
-        $control.status = 'failed'
-        $control.reason = $_.Exception.Message
-        $control.error = [ordered]@{
-            type = $_.Exception.GetType().FullName
-            message = $_.Exception.Message
-        }
-    }
-    finally {
-        if (-not [string]::IsNullOrWhiteSpace($controlWorkspaceRoot) -and (Test-Path -LiteralPath $controlWorkspaceRoot -PathType Container)) {
-            try {
-                Remove-Item -LiteralPath $controlWorkspaceRoot -Recurse -Force
-                Write-Log ("Cleaned LV2026 control probe workspace: {0}" -f $controlWorkspaceRoot)
-            }
-            catch {
-                Write-Log ("WARNING: failed to clean LV2026 control probe workspace '{0}': {1}" -f $controlWorkspaceRoot, $_.Exception.Message)
-            }
-        }
-    }
-
-    return $control
-}
-
 $startedUtc = (Get-Date).ToUniversalTime()
 $logLines = New-Object 'System.Collections.Generic.List[string]'
 $workspaceRoot = $null
-$runPhaseStarted = $false
 $resolvedSourceProjectRoot = ''
-$gcliCommandPath = ''
-$sourceLvversionRaw = ''
 $result = [ordered]@{
     schema_version = 1
     status = 'failed'
@@ -471,7 +300,6 @@ $result = [ordered]@{
     target_labview_version = [string]$TargetLabVIEWVersion
     required_bitness = $RequiredBitness
     override_lvversion = $OverrideLvversion
-    allow_no_testcases_when_control_probe_passes = [bool]$AllowNoTestcasesWhenControlProbePasses
     source = [ordered]@{
         project_root = ''
         project_path = ''
@@ -485,17 +313,9 @@ $result = [ordered]@{
         lvversion_path = ''
         lvversion_after = ''
     }
-    preflight = [ordered]@{
-        vipm_command = ''
-        vipm_list_command = ''
-        vipm_list_exit_code = $null
-        vipm_list_output = ''
-        required_package_ids = @(
-            'astemes_lib_lunit',
-            'sas_workshops_lib_lunit_for_g_cli'
-        )
-        installed_package_ids = @()
-        missing_package_ids = @()
+    process_hygiene = [ordered]@{
+        enforce_isolation = [bool]$EnforceLabVIEWProcessIsolation
+        before_run = $null
     }
     commands = [ordered]@{
         run = ''
@@ -513,32 +333,6 @@ $result = [ordered]@{
         failed = $null
         failed_cases = @()
     }
-    control_probe = [ordered]@{
-        executed = $false
-        status = 'not_run'
-        reason = 'not_triggered'
-        target_labview_version = '2026'
-        required_bitness = '64'
-        active_labview_processes = @()
-        workspace_root = ''
-        report_path = ''
-        command = ''
-        run_exit_code = $null
-        run_output = ''
-        validation_outcome = 'not_run'
-        total = $null
-        passed = $null
-        skipped = $null
-        failed = $null
-        failed_cases = @()
-        error = $null
-    }
-    process_hygiene = [ordered]@{
-        enforce_isolation = [bool]$EnforceLabVIEWProcessIsolation
-        before_lv2020_run = $null
-        before_lv2026_control_probe = $null
-    }
-    advisory = $null
     error = $null
 }
 
@@ -560,19 +354,16 @@ $workspaceDiagnosticsDirectory = Join-Path $resolvedOutputDirectory 'workspace'
 Ensure-Directory -Path $reportsDirectory
 Ensure-Directory -Path $workspaceDiagnosticsDirectory
 
-$primaryReportFileName = "lunit-report-lv{0}-x{1}.xml" -f [string]$TargetLabVIEWVersion, [string]$RequiredBitness
-$controlReportFileName = 'lunit-report-lv2026-x64-control.xml'
+$reportFileName = "lunit-report-lv{0}-x{1}.xml" -f [string]$TargetLabVIEWVersion, [string]$RequiredBitness
 
 $paths = [ordered]@{
     status_path = Join-Path $resolvedOutputDirectory 'lunit-smoke.status.json'
     result_path = Join-Path $resolvedOutputDirectory 'lunit-smoke.result.json'
     log_path = Join-Path $resolvedOutputDirectory 'lunit-smoke.log'
-    report_path = Join-Path $reportsDirectory $primaryReportFileName
-    control_report_path = Join-Path $reportsDirectory $controlReportFileName
+    report_path = Join-Path $reportsDirectory $reportFileName
     lvversion_before_path = Join-Path $workspaceDiagnosticsDirectory 'lvversion.before'
     lvversion_after_path = Join-Path $workspaceDiagnosticsDirectory 'lvversion.after'
 }
-$result.control_probe.report_path = $paths.control_report_path
 
 $statusPayload = [ordered]@{
     status = 'failed'
@@ -582,7 +373,7 @@ $statusPayload = [ordered]@{
 }
 
 try {
-    Write-Log "Starting LabVIEW 2020 LUnit smoke gate (bitness: $RequiredBitness)."
+    Write-Log "Starting LabVIEW LUnit smoke gate (bitness: $RequiredBitness)."
 
     $resolvedSourceProjectRoot = Resolve-FullPath -Path $SourceProjectRoot
     if (-not (Test-Path -LiteralPath $resolvedSourceProjectRoot -PathType Container)) {
@@ -594,7 +385,6 @@ try {
     if ($null -eq $gcliCommand) {
         throw "Required command 'g-cli' not found on PATH."
     }
-    $gcliCommandPath = $gcliCommand.Source
     Write-Log ("Resolved g-cli command: {0}" -f $gcliCommand.Source)
 
     $projectCandidates = @(Get-ChildItem -Path $resolvedSourceProjectRoot -Recurse -File -Filter $ProjectName)
@@ -620,10 +410,9 @@ try {
 
     $sourceLvversionRaw = (Get-Content -LiteralPath $sourceLvversionPath -Raw -ErrorAction Stop).Trim()
     [void](Parse-LvversionValue -RawValue $sourceLvversionRaw -Label '.lvversion')
+    [void](Parse-LvversionValue -RawValue $OverrideLvversion -Label 'OverrideLvversion')
     $result.source.lvversion_before = $sourceLvversionRaw
     Set-Content -LiteralPath $paths.lvversion_before_path -Value $sourceLvversionRaw -Encoding ASCII
-
-    [void](Parse-LvversionValue -RawValue $OverrideLvversion -Label 'OverrideLvversion')
 
     $workspaceParent = if (-not [string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
         $env:RUNNER_TEMP
@@ -634,7 +423,8 @@ try {
     else {
         $resolvedOutputDirectory
     }
-    $workspaceRoot = Join-Path $workspaceParent ("lunit-smoke-lv2020-{0}" -f [guid]::NewGuid().ToString('N'))
+
+    $workspaceRoot = Join-Path $workspaceParent ("lunit-smoke-{0}" -f [guid]::NewGuid().ToString('N'))
     Ensure-Directory -Path $workspaceRoot
     $result.workspace.root = $workspaceRoot
 
@@ -664,37 +454,13 @@ try {
     $runArgs = @('--lv-ver', [string]$TargetLabVIEWVersion, '--arch', $RequiredBitness, 'lunit', '--', '-r', $reportPath, $workspaceProjectPath)
     $result.commands.run = 'g-cli ' + (New-QuotedCommand -Args $runArgs)
 
-    $vipmCommand = Get-Command -Name 'vipm' -ErrorAction SilentlyContinue
-    if ($null -eq $vipmCommand) {
-        throw "Required command 'vipm' not found on PATH."
-    }
-    $result.preflight.vipm_command = $vipmCommand.Source
-    Write-Log ("Resolved vipm command: {0}" -f $vipmCommand.Source)
-
-    $vipmPackages = Get-VipmInstalledPackages -VipmCommandPath $vipmCommand.Source -LabVIEWVersion ([string]$TargetLabVIEWVersion) -Bitness $RequiredBitness
-    $result.preflight.vipm_list_command = [string]$vipmPackages.command
-    $result.preflight.vipm_list_exit_code = [int]$vipmPackages.exit_code
-    $result.preflight.vipm_list_output = [string]$vipmPackages.output
-    if ([int]$vipmPackages.exit_code -ne 0) {
-        throw ("VIPM package preflight failed: unable to query installed packages for LabVIEW {0} ({1}-bit). Command '{2}' exited with code {3}." -f $TargetLabVIEWVersion, $RequiredBitness, $result.preflight.vipm_list_command, $result.preflight.vipm_list_exit_code)
-    }
-
-    $installedPackageIds = @($vipmPackages.package_ids | ForEach-Object { $_.ToLowerInvariant() } | Sort-Object -Unique)
-    $result.preflight.installed_package_ids = $installedPackageIds
-    $missingPackageIds = @($result.preflight.required_package_ids | Where-Object { $installedPackageIds -notcontains $_.ToLowerInvariant() })
-    $result.preflight.missing_package_ids = $missingPackageIds
-    if ($missingPackageIds.Count -gt 0) {
-        $missingList = ($missingPackageIds -join ', ')
-        throw ("VIPM package preflight failed: missing required package IDs for LabVIEW {0} ({1}-bit): {2}. Apply .github/actions/apply-vipc/runner_dependencies.vipc." -f $TargetLabVIEWVersion, $RequiredBitness, $missingList)
-    }
-
-    $runPhaseStarted = $true
     if ($EnforceLabVIEWProcessIsolation) {
-        $result.process_hygiene.before_lv2020_run = Ensure-LabVIEWProcessQuiescence -PhaseLabel 'LV2020 smoke run'
-        if ([string]$result.process_hygiene.before_lv2020_run.status -eq 'failed_to_clear') {
-            throw ("Unable to clear active LabVIEW processes before LV2020 smoke run. Remaining process IDs: {0}." -f ((@($result.process_hygiene.before_lv2020_run.final_process_ids) -join ', ')))
+        $result.process_hygiene.before_run = Ensure-LabVIEWProcessQuiescence -PhaseLabel 'LUnit smoke run'
+        if ([string]$result.process_hygiene.before_run.status -eq 'failed_to_clear') {
+            throw ("Unable to clear active LabVIEW processes before LUnit smoke run. Remaining process IDs: {0}." -f ((@($result.process_hygiene.before_run.final_process_ids) -join ', ')))
         }
     }
+
     Write-Log ("Executing run command: {0}" -f $result.commands.run)
     $runOutput = & $gcliCommand.Source @runArgs 2>&1
     $runExitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
@@ -728,7 +494,7 @@ try {
 
     $result.status = 'passed'
     $statusPayload.status = 'passed'
-    Write-Log "LabVIEW 2020 LUnit smoke gate completed successfully."
+    Write-Log 'LabVIEW LUnit smoke gate completed successfully.'
 }
 catch {
     $errorMessage = $_.Exception.Message
@@ -740,87 +506,6 @@ catch {
     $statusPayload.status = 'failed'
     $statusPayload.reason = $errorMessage
     Write-Log ("ERROR: {0}" -f $errorMessage)
-
-    if ($runPhaseStarted -and -not [string]::IsNullOrWhiteSpace($gcliCommandPath) -and -not [string]::IsNullOrWhiteSpace($resolvedSourceProjectRoot) -and -not [string]::IsNullOrWhiteSpace([string]$result.source.project_relative_path)) {
-        $primaryValidationOutcome = [string]$result.report.validation_outcome
-        if ([string]::IsNullOrWhiteSpace($primaryValidationOutcome)) {
-            $primaryValidationOutcome = 'unknown'
-        }
-
-        $eligibleControlOutcomes = @('no_testcases', 'failed_testcases')
-        if ($eligibleControlOutcomes -notcontains $primaryValidationOutcome) {
-            $result.control_probe.reason = "skipped_for_primary_outcome_$primaryValidationOutcome"
-            Write-Log ("Skipping LV2026 control probe because LV2020 validation outcome '{0}' is not in eligible set: {1}." -f $primaryValidationOutcome, ($eligibleControlOutcomes -join ', '))
-        }
-        else {
-            $activeLabVIEWProcessNames = @()
-            if ($EnforceLabVIEWProcessIsolation) {
-                $result.process_hygiene.before_lv2026_control_probe = Ensure-LabVIEWProcessQuiescence -PhaseLabel 'LV2026 control probe'
-                $activeLabVIEWProcessNames = @($result.process_hygiene.before_lv2026_control_probe.initial_process_names)
-                $result.control_probe.active_labview_processes = @($activeLabVIEWProcessNames)
-                if ([string]$result.process_hygiene.before_lv2026_control_probe.status -eq 'failed_to_clear') {
-                    $result.control_probe.reason = 'skipped_unable_to_clear_active_labview_processes'
-                    Write-Log ("Skipping LV2026 control probe because active LabVIEW processes could not be cleared before probe. Remaining process IDs: {0}" -f ((@($result.process_hygiene.before_lv2026_control_probe.final_process_ids) -join ', ')))
-                }
-            }
-            else {
-                try {
-                    $activeLabVIEWProcessNames = @(
-                        Get-ActiveLabVIEWProcesses |
-                        Select-Object -ExpandProperty ProcessName -Unique |
-                        Sort-Object
-                    )
-                }
-                catch {
-                    Write-Log ("WARNING: Unable to enumerate LabVIEW processes before control probe: {0}" -f $_.Exception.Message)
-                }
-
-                $result.control_probe.active_labview_processes = @($activeLabVIEWProcessNames)
-                if ($activeLabVIEWProcessNames.Count -gt 0) {
-                    $result.control_probe.reason = 'skipped_active_labview_processes'
-                    Write-Log ("Skipping LV2026 control probe because active LabVIEW processes were detected: {0}" -f ($activeLabVIEWProcessNames -join ', '))
-                }
-            }
-
-            if ([string]$result.control_probe.reason -notin @('skipped_active_labview_processes', 'skipped_unable_to_clear_active_labview_processes')) {
-                Write-Log 'LV2020 run/report path failed; running diagnostic-only LV2026 control probe.'
-                $result.control_probe = Invoke-Lv2026ControlProbe `
-                    -GcliCommandPath $gcliCommandPath `
-                    -SourceProjectRoot $resolvedSourceProjectRoot `
-                    -ProjectRelativePath ([string]$result.source.project_relative_path) `
-                    -SourceLvversionRaw $sourceLvversionRaw `
-                    -ReportPath $paths.control_report_path
-
-                if ([string]$result.control_probe.status -eq 'passed') {
-                    Write-Log 'LV2026 control probe passed. LV2020 failure is likely version-specific compatibility/discovery.'
-                }
-                else {
-                    Write-Log ("LV2026 control probe failed: {0}" -f [string]$result.control_probe.reason)
-                }
-            }
-        }
-
-        if (
-            $AllowNoTestcasesWhenControlProbePasses -and
-            $primaryValidationOutcome -eq 'no_testcases' -and
-            [string]$result.control_probe.status -eq 'passed'
-        ) {
-            $result.status = 'passed'
-            $result.error = $null
-            $result.advisory = [ordered]@{
-                type = 'lv2020_no_testcases_control_probe_passed'
-                message = 'LV2020 produced no testcases, but LV2026 control probe passed. Treating as pass because AllowNoTestcasesWhenControlProbePasses is enabled.'
-                primary_validation_outcome = $primaryValidationOutcome
-                control_probe_status = [string]$result.control_probe.status
-            }
-            $statusPayload.status = 'passed'
-            $statusPayload.reason = ''
-            Write-Log 'WARNING: LV2020 produced no testcases, but LV2026 control probe passed. Passing gate due to AllowNoTestcasesWhenControlProbePasses.'
-        }
-    }
-    elseif (-not $runPhaseStarted) {
-        $result.control_probe.reason = 'run_phase_not_reached'
-    }
 }
 finally {
     if (-not [string]::IsNullOrWhiteSpace($workspaceRoot) -and (Test-Path -LiteralPath $workspaceRoot -PathType Container)) {
@@ -850,5 +535,5 @@ if ($result.status -ne 'passed') {
     else {
         'unknown failure'
     }
-    throw "LabVIEW 2020 LUnit smoke gate failed: $reason. See '$($paths.result_path)' and '$($paths.log_path)'."
+    throw "LabVIEW LUnit smoke gate failed: $reason. See '$($paths.result_path)' and '$($paths.log_path)'."
 }

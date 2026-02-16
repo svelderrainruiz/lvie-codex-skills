@@ -28,12 +28,10 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'source_project_sha:'
         $script:workflowContent | Should -Match 'workflow_call:\s*[\s\S]*?labview_profile:'
         $script:workflowContent | Should -Match 'workflow_call:\s*[\s\S]*?source_labview_version_override:'
-        $script:workflowContent | Should -Match 'workflow_call:\s*[\s\S]*?run_lv2020_edge_smoke:'
         $script:workflowContent | Should -Match 'CONSUMER_REPO:\s*\$\{\{\s*inputs\.source_project_repo'
         $script:workflowContent | Should -Match 'CONSUMER_REF:\s*\$\{\{\s*inputs\.source_project_ref'
         $script:workflowContent | Should -Match 'CONSUMER_EXPECTED_SHA:\s*\$\{\{\s*inputs\.source_project_sha'
         $script:workflowContent | Should -Match 'SOURCE_LVVERSION_OVERRIDE:\s*\$\{\{\s*inputs\.source_labview_version_override'
-        $script:workflowContent | Should -Match 'RUN_LV2020_EDGE_SMOKE:\s*\$\{\{\s*inputs\.run_lv2020_edge_smoke'
     }
 
     It 'defines ordered docker-ci then non-gating pylavi/runner-cli lanes, then lunit smoke, windows or linux build jobs plus release-notes/profile/VIPB prep then self-hosted package, install, and final gate jobs' {
@@ -42,7 +40,6 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'validate-pylavi-docker-source-project:'
         $script:workflowContent | Should -Match 'build-runner-cli-linux-docker:'
         $script:workflowContent | Should -Match 'run-lunit-smoke-x64:'
-        $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:'
         $script:workflowContent | Should -Match 'build-x64-ppl-windows:'
         $script:workflowContent | Should -Match 'build-x64-ppl-linux:'
         $script:workflowContent | Should -Match 'build-x86-ppl-linux-shadow:'
@@ -66,8 +63,6 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'docker-contract-runner-cli-linux-x64-\$\{\{\s*github\.run_id\s*\}\}'
         $script:workflowContent | Should -Match 'run-lunit-smoke-x64:\s*[\s\S]*?runs-on:\s*(\[\s*self-hosted,\s*windows,\s*\$\{\{\s*needs\.resolve-labview-profile\.outputs\.source_runner_label_x64\s*\}\}\s*\]|(?:\r?\n\s*-\s*self-hosted\r?\n\s*-\s*windows\r?\n\s*-\s*\$\{\{\s*needs\.resolve-labview-profile\.outputs\.source_runner_label_x64\s*\}\}))'
         $script:workflowContent | Should -Match 'run-lunit-smoke-x64:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target,\s*resolve-labview-profile\]'
-        $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:\s*[\s\S]*?if:\s*\$\{\{\s*inputs\.run_lv2020_edge_smoke == true \|\| inputs\.run_lv2020_edge_smoke == ''true'''
-        $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target\]'
         $script:workflowContent | Should -Match 'build-x64-ppl-windows:\s*[\s\S]*?runs-on:\s*windows-latest'
         $script:workflowContent | Should -Match 'build-x64-ppl-windows:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target\]'
         $script:workflowContent | Should -Match 'build-x64-ppl-linux:\s*[\s\S]*?needs:\s*\[docker-ci,\s*resolve-source-target,\s*build-x64-ppl-windows\]'
@@ -107,8 +102,7 @@ Describe 'Docker contract CI workflow contract' {
         $script:workflowContent | Should -Match 'workflow_dispatch:\s*[\s\S]*?labview_profile:'
         $script:workflowContent | Should -Match 'labview_profile:\s*[\s\S]*?default:\s*''lv2026'''
         $script:workflowContent | Should -Match 'workflow_dispatch:\s*[\s\S]*?source_labview_version_override:'
-        $script:workflowContent | Should -Match 'workflow_dispatch:\s*[\s\S]*?run_lv2020_edge_smoke:'
-        $script:workflowContent | Should -Match 'run_lv2020_edge_smoke:\s*[\s\S]*?default:\s*false'
+        $script:workflowContent | Should -Not -Match 'run_lv2020_edge_smoke:'
     }
 
     It 'checks out consumer and validates expected SHA in PPL, release-notes, and VIPB prep jobs' {
@@ -201,57 +195,43 @@ Describe 'Docker contract CI workflow contract' {
     }
 
     It 'runs native LabVIEW lunit smoke gate in x64 with source-version target and uploads diagnostics artifact' {
-        $runLunitBlockMatch = [regex]::Match($script:workflowContent, 'run-lunit-smoke-x64:\s*[\s\S]*?run-lunit-smoke-lv2020x64-edge:', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+        $runLunitBlockMatch = [regex]::Match($script:workflowContent, 'run-lunit-smoke-x64:\s*[\s\S]*?build-x64-ppl-windows:', [System.Text.RegularExpressions.RegexOptions]::Singleline)
         $runLunitBlockMatch.Success | Should -BeTrue
         $runLunitBlock = $runLunitBlockMatch.Value
 
         $script:workflowContent | Should -Match 'run-lunit-smoke-x64:'
         $script:workflowContent | Should -Match 'Run native LabVIEW LUnit smoke \(x64, source-version target\)'
-        $script:workflowContent | Should -Match 'scripts/Invoke-LunitSmokeLv2020\.ps1'
+        $script:workflowContent | Should -Match 'scripts/Invoke-LunitSmoke\.ps1'
         $script:workflowContent | Should -Not -Match 'Resolve LUnit smoke execution target'
         $script:workflowContent | Should -Match '-TargetLabVIEWVersion \$\{\{\s*needs\.resolve-labview-profile\.outputs\.effective_labview_year\s*\}\}'
         $script:workflowContent | Should -Match '-OverrideLvversion ''\$\{\{\s*needs\.resolve-labview-profile\.outputs\.effective_lvversion_raw\s*\}\}'''
         $script:workflowContent | Should -Match '-RequiredBitness ''64'''
         $script:workflowContent | Should -Match '-EnforceLabVIEWProcessIsolation'
-        $runLunitBlock | Should -Not -Match '-AllowNoTestcasesWhenControlProbePasses'
+        $runLunitBlock | Should -Not -Match '(?i)vipm'
+        $runLunitBlock | Should -Not -Match '(?i)control probe'
         $runLunitBlock | Should -Not -Match '-RequiredBitness ''32'''
-        $script:workflowContent | Should -Match 'Publish LabVIEW 2020 LUnit smoke summary'
+        $script:workflowContent | Should -Match 'Publish LUnit smoke summary'
         $script:workflowContent | Should -Match 'Effective \.lvversion'
         $script:workflowContent | Should -Match 'Observed source \.lvversion'
         $script:workflowContent | Should -Match 'Override active'
         $script:workflowContent | Should -Match 'lunit-report-lv\{0\}-x64\.xml'
-        $script:workflowContent | Should -Match 'lunit-report-lv2026-x64-control\.xml'
-        $script:workflowContent | Should -Match 'LV2026 Comparative Control Probe \(diagnostic only\)'
         $script:workflowContent | Should -Not -Match '\("- Bitness: `64`"\)'
-        $script:workflowContent | Should -Match 'Upload LabVIEW 2020 LUnit smoke artifact'
-        $script:workflowContent | Should -Match 'docker-contract-lunit-smoke-lv2020-\$\{\{\s*github\.run_id\s*\}\}'
-        $script:workflowContent | Should -Match 'Upload LabVIEW 2020 LUnit smoke artifact\s*[\s\S]*?if:\s*always\(\)'
+        $script:workflowContent | Should -Match 'Upload LUnit smoke artifact'
+        $script:workflowContent | Should -Match 'docker-contract-lunit-smoke-x64-\$\{\{\s*github\.run_id\s*\}\}'
+        $script:workflowContent | Should -Match 'Upload LUnit smoke artifact\s*[\s\S]*?if:\s*always\(\)'
     }
 
-    It 'defines optional non-gating LV2020 x64 edge smoke diagnostics job' {
-        $edgeJobBlockMatch = [regex]::Match($script:workflowContent, 'run-lunit-smoke-lv2020x64-edge:\s*[\s\S]*?build-x64-ppl-windows:', [System.Text.RegularExpressions.RegexOptions]::Singleline)
-        $edgeJobBlockMatch.Success | Should -BeTrue
-        $edgeJobBlock = $edgeJobBlockMatch.Value
-
-        $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:'
-        $script:workflowContent | Should -Match 'Run optional LV2020 x64 edge smoke \(non-gating\)'
-        $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:\s*[\s\S]*?-TargetLabVIEWVersion 2020'
-        $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:\s*[\s\S]*?-OverrideLvversion ''20\.0'''
-        $edgeJobBlock | Should -Match '-AllowNoTestcasesWhenControlProbePasses'
-        $script:workflowContent | Should -Match 'run-lunit-smoke-lv2020x64-edge:\s*[\s\S]*?continue-on-error:\s*true'
-        $script:workflowContent | Should -Match 'docker-contract-lunit-smoke-lv2020-edge-\$\{\{\s*github\.run_id\s*\}\}'
-    }
-
-    It 'keeps the LabVIEW 2020 smoke summary PowerShell block parse-safe' {
+    It 'keeps the LUnit smoke summary PowerShell block parse-safe' {
         $summaryStepMatch = [regex]::Match(
             $script:workflowContent,
-            '- name: Publish LabVIEW 2020 LUnit smoke summary[\s\S]*?run:\s*\|\s*(?<script>[\s\S]*?)\r?\n\s*- name: Upload LabVIEW 2020 LUnit smoke artifact',
+            '- name: Publish LUnit smoke summary[\s\S]*?run:\s*\|\s*(?<script>[\s\S]*?)\r?\n\s*- name: Upload LUnit smoke artifact',
             [System.Text.RegularExpressions.RegexOptions]::Singleline
         )
         $summaryStepMatch.Success | Should -BeTrue
 
         $summaryScript = $summaryStepMatch.Groups['script'].Value
         $summaryScript | Should -Not -Match '\("- Bitness: `64`"\)'
+        $summaryScript | Should -Not -Match '(?i)control probe'
 
         $tokens = $null
         $errors = $null

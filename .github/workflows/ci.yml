@@ -28,11 +28,6 @@ on:
         required: false
         default: ''
         type: string
-      run_lv2020_edge_smoke:
-        description: 'Run optional non-gating LV2020 x64 edge smoke diagnostics'
-        required: false
-        default: false
-        type: boolean
   pull_request:
   workflow_dispatch:
     inputs:
@@ -61,11 +56,6 @@ on:
         required: false
         default: ''
         type: string
-      run_lv2020_edge_smoke:
-        description: 'Run optional non-gating LV2020 x64 edge smoke diagnostics'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -83,7 +73,6 @@ env:
   DEFAULT_LABVIEW_PROFILE: ${{ inputs.labview_profile || vars.LVIE_LABVIEW_PROFILE || 'lv2026' }}
   PARITY_ENFORCEMENT_PROFILE: ${{ vars.LVIE_PARITY_ENFORCEMENT_PROFILE || 'auto' }}
   SOURCE_LVVERSION_OVERRIDE: ${{ inputs.source_labview_version_override || '' }}
-  RUN_LV2020_EDGE_SMOKE: ${{ inputs.run_lv2020_edge_smoke || 'false' }}
   LABVIEW_VERSION: '2026'
   BITNESS: '64'
 
@@ -465,13 +454,13 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $outputDirectory = Join-Path $env:RUNNER_TEMP 'lunit-smoke-lv2020'
+          $outputDirectory = Join-Path $env:RUNNER_TEMP 'lunit-smoke-x64'
           if (Test-Path -LiteralPath $outputDirectory -PathType Container) {
             Remove-Item -LiteralPath $outputDirectory -Recurse -Force
           }
           New-Item -Path $outputDirectory -ItemType Directory -Force | Out-Null
 
-          & "$env:GITHUB_WORKSPACE/scripts/Invoke-LunitSmokeLv2020.ps1" `
+          & "$env:GITHUB_WORKSPACE/scripts/Invoke-LunitSmoke.ps1" `
             -SourceProjectRoot (Join-Path $env:GITHUB_WORKSPACE 'consumer') `
             -TargetLabVIEWVersion ${{ needs.resolve-labview-profile.outputs.effective_labview_year }} `
             -RequiredBitness '64' `
@@ -479,12 +468,12 @@ jobs:
             -OverrideLvversion '${{ needs.resolve-labview-profile.outputs.effective_lvversion_raw }}' `
             -EnforceLabVIEWProcessIsolation
 
-      - name: Publish LabVIEW 2020 LUnit smoke summary
+      - name: Publish LUnit smoke summary
         if: always()
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $outputDirectory = Join-Path $env:RUNNER_TEMP 'lunit-smoke-lv2020'
+          $outputDirectory = Join-Path $env:RUNNER_TEMP 'lunit-smoke-x64'
           $statusPath = Join-Path $outputDirectory 'lunit-smoke.status.json'
           $resultPath = Join-Path $outputDirectory 'lunit-smoke.result.json'
           $targetLabVIEWVersion = '${{ needs.resolve-labview-profile.outputs.effective_labview_year }}'
@@ -492,7 +481,7 @@ jobs:
           $observedSourceLvversionRaw = '${{ needs.resolve-labview-profile.outputs.observed_source_lvversion_raw }}'
           $overrideActive = '${{ needs.resolve-labview-profile.outputs.override_active }}'
           $reportPath = Join-Path $outputDirectory ("reports/lunit-report-lv{0}-x64.xml" -f $targetLabVIEWVersion)
-          $artifactName = "docker-contract-lunit-smoke-lv2020-$env:GITHUB_RUN_ID"
+          $artifactName = "docker-contract-lunit-smoke-x64-$env:GITHUB_RUN_ID"
 
           $status = 'unknown'
           $reason = ''
@@ -512,14 +501,6 @@ jobs:
 
           $failedCount = ''
           $validationOutcome = ''
-          $controlProbeStatus = ''
-          $controlProbeReason = ''
-          $controlProbeValidation = ''
-          $controlProbeRunExit = ''
-          $controlProbeReportPath = Join-Path $outputDirectory 'reports/lunit-report-lv2026-x64-control.xml'
-          $controlProbeActiveProcesses = ''
-          $advisoryType = ''
-          $advisoryMessage = ''
           if (Test-Path -LiteralPath $resultPath -PathType Leaf) {
             try {
               $resultPayload = Get-Content -LiteralPath $resultPath -Raw | ConvertFrom-Json
@@ -531,24 +512,6 @@ jobs:
               }
               if ($null -ne $resultPayload.report -and $null -ne $resultPayload.report.path -and -not [string]::IsNullOrWhiteSpace([string]$resultPayload.report.path)) {
                 $reportPath = [string]$resultPayload.report.path
-              }
-              if ($null -ne $resultPayload.control_probe) {
-                $controlProbeStatus = [string]$resultPayload.control_probe.status
-                $controlProbeReason = [string]$resultPayload.control_probe.reason
-                $controlProbeValidation = [string]$resultPayload.control_probe.validation_outcome
-                if ($null -ne $resultPayload.control_probe.run_exit_code) {
-                  $controlProbeRunExit = [string]$resultPayload.control_probe.run_exit_code
-                }
-                if ($null -ne $resultPayload.control_probe.report_path -and -not [string]::IsNullOrWhiteSpace([string]$resultPayload.control_probe.report_path)) {
-                  $controlProbeReportPath = [string]$resultPayload.control_probe.report_path
-                }
-                if ($null -ne $resultPayload.control_probe.active_labview_processes) {
-                  $controlProbeActiveProcesses = (@($resultPayload.control_probe.active_labview_processes) | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ', '
-                }
-              }
-              if ($null -ne $resultPayload.advisory) {
-                $advisoryType = [string]$resultPayload.advisory.type
-                $advisoryMessage = [string]$resultPayload.advisory.message
               }
             } catch {
               if ([string]::IsNullOrWhiteSpace($reason)) {
@@ -571,7 +534,7 @@ jobs:
           )
 
           if (-not [string]::IsNullOrWhiteSpace($validationOutcome)) {
-            $summary += ("- LV2020 validation outcome: {0}" -f $validationOutcome)
+            $summary += ("- Report validation outcome: {0}" -f $validationOutcome)
           }
           if (-not [string]::IsNullOrWhiteSpace($failedCount)) {
             $summary += ("- Failed test cases: {0}" -f $failedCount)
@@ -579,121 +542,15 @@ jobs:
           if (-not [string]::IsNullOrWhiteSpace($reason)) {
             $summary += ("- Reason: {0}" -f $reason.Replace("`r", ' ').Replace("`n", ' '))
           }
-          if (-not [string]::IsNullOrWhiteSpace($advisoryType)) {
-            $summary += ("- Advisory type: {0}" -f $advisoryType)
-          }
-          if (-not [string]::IsNullOrWhiteSpace($advisoryMessage)) {
-            $summary += ("- Advisory: {0}" -f $advisoryMessage.Replace("`r", ' ').Replace("`n", ' '))
-          }
-          $controlProbeWasRelevant = (
-            (-not [string]::IsNullOrWhiteSpace($controlProbeStatus) -and $controlProbeStatus -ne 'not_run') -or
-            (-not [string]::IsNullOrWhiteSpace($controlProbeReason) -and $controlProbeReason -ne 'not_triggered')
-          )
-          if ($controlProbeWasRelevant) {
-            $summary += ''
-            $summary += '### LV2026 Comparative Control Probe (diagnostic only)'
-            $summary += ("- Status: {0}" -f $controlProbeStatus)
-            if (-not [string]::IsNullOrWhiteSpace($controlProbeValidation)) {
-              $summary += ("- Validation outcome: {0}" -f $controlProbeValidation)
-            }
-            if (-not [string]::IsNullOrWhiteSpace($controlProbeRunExit)) {
-              $summary += ("- Run exit code: {0}" -f $controlProbeRunExit)
-            }
-            $summary += ("- Report path: {0}" -f $controlProbeReportPath)
-            if (-not [string]::IsNullOrWhiteSpace($controlProbeReason) -and $controlProbeReason -ne 'control_probe_passed') {
-              $summary += ("- Reason: {0}" -f $controlProbeReason.Replace("`r", ' ').Replace("`n", ' '))
-            }
-            if (-not [string]::IsNullOrWhiteSpace($controlProbeActiveProcesses)) {
-              $summary += ("- Active LabVIEW processes at probe decision time: {0}" -f $controlProbeActiveProcesses)
-            }
-            if ($controlProbeStatus -eq 'passed' -and $status -ne 'passed') {
-              $summary += '- Interpretation: LV2026 control probe passed; LV2020 failure is likely LV2020-specific compatibility/discovery.'
-            }
-          }
 
           $summary -join [Environment]::NewLine | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Upload LabVIEW 2020 LUnit smoke artifact
+      - name: Upload LUnit smoke artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: docker-contract-lunit-smoke-lv2020-${{ github.run_id }}
-          path: ${{ runner.temp }}/lunit-smoke-lv2020
-          if-no-files-found: error
-
-  run-lunit-smoke-lv2020x64-edge:
-    if: ${{ inputs.run_lv2020_edge_smoke == true || inputs.run_lv2020_edge_smoke == 'true' }}
-    runs-on:
-      - self-hosted
-      - windows
-      - self-hosted-windows-lv2020x64
-    needs: [docker-ci, resolve-source-target]
-    env:
-      CONSUMER_REPO: ${{ needs.resolve-source-target.outputs.consumer_repo }}
-      CONSUMER_REF: ${{ needs.resolve-source-target.outputs.consumer_ref }}
-      CONSUMER_EXPECTED_SHA: ${{ needs.resolve-source-target.outputs.consumer_sha }}
-    steps:
-      - name: Checkout skill repository
-        uses: actions/checkout@v4
-
-      - name: Checkout source project repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.CONSUMER_REPO }}
-          ref: ${{ env.CONSUMER_REF }}
-          path: consumer
-
-      - name: Verify checked out source project SHA
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $actualSha = (git -C consumer rev-parse HEAD).Trim()
-          if ($actualSha -ne $env:CONSUMER_EXPECTED_SHA) {
-            throw "Source project SHA mismatch. Expected '$env:CONSUMER_EXPECTED_SHA', got '$actualSha'."
-          }
-          Write-Host "Source project SHA verified: $actualSha"
-
-      - name: Assert source project remotes
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $outputDirectory = Join-Path $env:RUNNER_TEMP 'source-project-remotes-lunit-edge'
-          if (Test-Path -LiteralPath $outputDirectory -PathType Container) {
-            Remove-Item -LiteralPath $outputDirectory -Recurse -Force
-          }
-          New-Item -Path $outputDirectory -ItemType Directory -Force | Out-Null
-
-          & "$env:GITHUB_WORKSPACE/scripts/Assert-SourceProjectRemotes.ps1" `
-            -SourceProjectRoot (Join-Path $env:GITHUB_WORKSPACE 'consumer') `
-            -UpstreamRepo $env:CONSUMER_REPO `
-            -OutputDirectory $outputDirectory
-
-      - name: Run optional LV2020 x64 edge smoke (non-gating)
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $outputDirectory = Join-Path $env:RUNNER_TEMP 'lunit-smoke-lv2020-edge'
-          if (Test-Path -LiteralPath $outputDirectory -PathType Container) {
-            Remove-Item -LiteralPath $outputDirectory -Recurse -Force
-          }
-          New-Item -Path $outputDirectory -ItemType Directory -Force | Out-Null
-
-          & "$env:GITHUB_WORKSPACE/scripts/Invoke-LunitSmokeLv2020.ps1" `
-            -SourceProjectRoot (Join-Path $env:GITHUB_WORKSPACE 'consumer') `
-            -TargetLabVIEWVersion 2020 `
-            -RequiredBitness '64' `
-            -OutputDirectory $outputDirectory `
-            -OverrideLvversion '20.0' `
-            -EnforceLabVIEWProcessIsolation `
-            -AllowNoTestcasesWhenControlProbePasses
-
-      - name: Upload optional LV2020 x64 edge smoke artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-contract-lunit-smoke-lv2020-edge-${{ github.run_id }}
-          path: ${{ runner.temp }}/lunit-smoke-lv2020-edge
+          name: docker-contract-lunit-smoke-x64-${{ github.run_id }}
+          path: ${{ runner.temp }}/lunit-smoke-x64
           if-no-files-found: error
 
   build-x64-ppl-windows:

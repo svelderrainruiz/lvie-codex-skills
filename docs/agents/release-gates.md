@@ -70,7 +70,6 @@ Dispatch inputs:
 Optional inputs:
 - `labview_profile` (LabVIEW target preset id)
 - `source_labview_version_override` (optional effective `.lvversion` override; format `major.minor`, minimum `20.0`)
-- `run_lv2020_edge_smoke` (optional non-gating LV2020 edge smoke diagnostics)
 - `run_self_hosted` (deprecated compatibility input)
 - `run_build_spec` (deprecated compatibility input)
 
@@ -111,19 +110,13 @@ Optional inputs:
   - execution target year is resolved from effective LabVIEW target selection.
   - when `source_labview_version_override` is provided, it must be `major.minor` and `>=20.0`, and becomes the effective CI target.
   - when override is not provided, observed source project `.lvversion` is used.
-  - LV2020 failure is blocking.
-  - a diagnostic-only LV2026 x64 control probe may run on comparable failures (`no_testcases` / `failed_testcases`) to improve root-cause clarity, but it does not change gate outcome.
-  - CI enforces process isolation (`-EnforceLabVIEWProcessIsolation`) and clears active LabVIEW processes before LV2020 run and before control probe.
-  - if active LabVIEW processes cannot be cleared, control probe is skipped with reason `skipped_unable_to_clear_active_labview_processes`.
-  - `-AllowNoTestcasesWhenControlProbePasses` is only used by optional `run-lunit-smoke-lv2020x64-edge`.
+  - report validation failures are blocking.
+  - CI enforces process isolation (`-EnforceLabVIEWProcessIsolation`) and clears active LabVIEW processes before the smoke run.
+  - the lane has no VIPM preflight dependency.
 - VIP package build path uses VIPM CLI:
   - self-hosted package lane runs `Invoke-VipmBuildPackage.ps1`
   - this lane builds the `.vip` via `vipm build` against the effective `.lvversion` target year (x64)
   - g-cli is limited to LUnit smoke only.
-- optional non-gating LV2020 edge smoke:
-  - enabled via `run_lv2020_edge_smoke: true`
-  - runs in `run-lunit-smoke-lv2020x64-edge`
-  - intended for deferred edge-case diagnostics and does not block required gates.
 - Runner PowerShell policy baseline:
   - one-time setup per runner account: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force`
   - verify with `Get-ExecutionPolicy -List`

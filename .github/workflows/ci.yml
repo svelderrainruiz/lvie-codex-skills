@@ -666,7 +666,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $pplPath = Join-Path $env:GITHUB_WORKSPACE $env:WINDOWS_PPL_OUTPUT_PATH
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $pplPath = Join-Path $consumerRoot $env:WINDOWS_PPL_OUTPUT_PATH
           if (-not (Test-Path -LiteralPath $pplPath -PathType Leaf)) {
             throw "Windows PPL output not found at '$pplPath'."
           }
@@ -690,7 +691,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-contract-ppl-container-windows-x64-raw-${{ github.run_id }}
-          path: ${{ github.workspace }}/${{ env.WINDOWS_PPL_OUTPUT_PATH }}
+          path: ${{ github.workspace }}/consumer/${{ env.WINDOWS_PPL_OUTPUT_PATH }}
           if-no-files-found: error
 
       - name: Upload Windows x64 PPL bundle artifact
@@ -1125,7 +1126,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $pplPath = Join-Path $env:GITHUB_WORKSPACE $env:LINUX_PPL_OUTPUT_PATH
+          $consumerRoot = Join-Path $env:GITHUB_WORKSPACE 'consumer'
+          $pplPath = Join-Path $consumerRoot $env:LINUX_PPL_OUTPUT_PATH
           if (-not (Test-Path -LiteralPath $pplPath -PathType Leaf)) {
             throw "Linux PPL output not found at '$pplPath'."
           }
@@ -1149,7 +1151,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: docker-contract-ppl-container-linux-x64-raw-${{ github.run_id }}
-          path: ${{ github.workspace }}/${{ env.LINUX_PPL_OUTPUT_PATH }}
+          path: ${{ github.workspace }}/consumer/${{ env.LINUX_PPL_OUTPUT_PATH }}
           if-no-files-found: error
 
       - name: Upload Linux x64 PPL bundle artifact
@@ -1674,9 +1676,11 @@ jobs:
               '-PortNumber', '3363'
             )
             & LabVIEWCLI @closeArgs
-            if ($LASTEXITCODE -ne 0) {
-              Write-Warning "LabVIEWCLI CloseLabVIEW returned exit code $LASTEXITCODE for $Bitness-bit."
+            $closeExitCode = $LASTEXITCODE
+            if ($closeExitCode -ne 0) {
+              Write-Warning "LabVIEWCLI CloseLabVIEW returned exit code $closeExitCode for $Bitness-bit."
             }
+            $global:LASTEXITCODE = 0
           }
 
           function Test-TargetLabVIEWProcessRunning {

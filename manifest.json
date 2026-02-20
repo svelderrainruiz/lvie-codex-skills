@@ -1,6 +1,6 @@
 {
   "name": "lvie-codex-skill-layer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license_spdx": "0BSD",
   "license_file": "LICENSE",
   "generated_utc": null,
@@ -17,6 +17,7 @@
     "ci-debt/signatures.json",
     "ci-debt/playbook.md",
     "ci-debt/fixtures/run-21840801109.json",
+    "ci-debt/fixtures/run-22211208268.json",
     "lunit-contract/README.md",
     "lunit-contract/contract.json",
     "lunit-contract/fixtures/report-pass.xml",

@@ -61,6 +61,34 @@
         "Emit required-job verdict plus root-cause list to speed remediation."
       ],
       "preventiveCheck": "CI Debt Policy Gate / Root Cause Contract"
+    },
+    {
+      "id": "vi-analyzer.labviewcli-port-contract-mismatch",
+      "job": "VI Analyzer",
+      "containsAny": [
+        "LabVIEWCLI port contract mismatch for year"
+      ],
+      "classification": "environment-contract-mismatch",
+      "severity": "high",
+      "recommendedActions": [
+        "Enable LabVIEWCLI port remediation in CI when deterministic runner drift is expected (LVIE_REMEDIATE_LABVIEWCLI_PORT_CONTRACT=1).",
+        "Align LabVIEW.ini server.tcp.enabled/server.tcp.port with the year+bitness contract and rerun VI Analyzer."
+      ],
+      "preventiveCheck": "CI Debt Policy Gate / Root Cause Contract"
+    },
+    {
+      "id": "ci-required.prerequisite-checks-failed",
+      "job": "CI Required / Lint+Contract",
+      "containsAny": [
+        "CI required context failed because prerequisite checks were not successful:"
+      ],
+      "classification": "aggregate-required-context-failure",
+      "severity": "medium",
+      "recommendedActions": [
+        "Inspect the prerequisite list emitted by CI Required and remediate each upstream failed check.",
+        "Treat CI Required as an aggregate signal; fix root-cause jobs first, then rerun."
+      ],
+      "preventiveCheck": "CI Debt Policy Gate / Root Cause Contract"
     }
   ]
 }

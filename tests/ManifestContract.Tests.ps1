@@ -14,8 +14,8 @@ Describe 'Skill layer manifest contract' {
         $script:manifest = Get-Content -Path $script:manifestPath -Raw | ConvertFrom-Json -ErrorAction Stop
     }
 
-    It 'contains vipm-cli-machine, linux-ppl-container-build, and smart-control-loop modules with v1.0.0 version' {
-        [string]$script:manifest.version | Should -Be '1.0.0'
+    It 'contains vipm-cli-machine, linux-ppl-container-build, and smart-control-loop modules with v1.0.1 version' {
+        [string]$script:manifest.version | Should -Be '1.0.1'
         $script:manifest.modules.PSObject.Properties.Name | Should -Contain 'vipm-cli-machine'
         [string]$script:manifest.modules.'vipm-cli-machine'.path | Should -Be 'vipm-cli-machine'
         $script:manifest.modules.PSObject.Properties.Name | Should -Contain 'linux-ppl-container-build'

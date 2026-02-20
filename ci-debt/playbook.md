@@ -26,6 +26,18 @@ This playbook is the deterministic remediation guide used by CI debt analysis.
 - Fix: Emit `Required job verdict`, `Root-cause failures`, and `Cascaded/skipped jobs` explicitly.
 - Prevention: `CI Debt Policy Gate / Root Cause Contract` validates contract output markers in workflow definition.
 
+## Signature: `vi-analyzer.labviewcli-port-contract-mismatch`
+- Symptom: `VI Analyzer` fails because the LabVIEWCLI port contract does not match the LabVIEW year/bitness lane.
+- Detection rule: Job log contains `LabVIEWCLI port contract mismatch for year`.
+- Fix: Enable deterministic remediation (`LVIE_REMEDIATE_LABVIEWCLI_PORT_CONTRACT=1`) and/or align `LabVIEW.ini` `server.tcp.enabled` + `server.tcp.port` to contract values.
+- Prevention: Keep runner LabVIEWCLI port contract pinned and validated during job setup.
+
+## Signature: `ci-required.prerequisite-checks-failed`
+- Symptom: `CI Required / Lint+Contract` fails after one or more prerequisite checks fail.
+- Detection rule: Job log contains `CI required context failed because prerequisite checks were not successful:`.
+- Fix: Read the emitted prerequisite failure list and remediate the listed upstream checks.
+- Prevention: Keep required check wiring explicit and preserve root-cause output in upstream lanes.
+
 ## Training Loop
 1. Capture run evidence (`Invoke-CiDebtAnalysis.ps1`) for failing run IDs.
 2. Match incidents against signatures.
